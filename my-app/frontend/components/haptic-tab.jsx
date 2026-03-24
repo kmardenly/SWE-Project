@@ -1,4 +1,3 @@
-import { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import * as Haptics from 'expo-haptics';
 import { Pressable } from 'react-native';
 
@@ -7,7 +6,7 @@ import { Pressable } from 'react-native';
  * (or some PlatformPressable setups) can drop children on web/Android and look
  * like the tab icons “disappear” when pressed.
  */
-export function HapticTab({ children, onPressIn, ...rest }: BottomTabBarButtonProps) {
+export function HapticTab({ children, onPressIn, ...rest }) {
   return (
     <Pressable
       {...rest}
