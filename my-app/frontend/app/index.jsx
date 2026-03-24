@@ -61,7 +61,7 @@ export default function LoginScreen() {
 
           <Pressable
             style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
-            onPress={() => router.push('/register' as never)}
+            onPress={() => router.push('/register')}
           >
             <Text style={styles.createButtonText}>Create Account</Text>
           </Pressable>
