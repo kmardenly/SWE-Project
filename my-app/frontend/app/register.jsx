@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import {useUser} from '@/context/UserContext';
-
+import {useState} from 'react';
  
 export default function RegisterScreen() {
   const{setUser} = useUser();

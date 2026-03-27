@@ -1,6 +1,36 @@
 import { useState } from 'react';
 import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
+import { Svg, Rect } from 'react-native-svg';
+
+function PicnicBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        {/* Base yellow */}
+        <Rect width="100%" height="100%" fill="#ffeebb" />
+        {/* Horizontal stripes */}
+        {Array.from({ length: 40 }).map((_, i) => (
+          <Rect
+            key={`h${i}`}
+            x="0" y={i * 40}
+            width="100%" height="20"
+            fill="rgba(255, 220, 124, 0.25)"
+          />
+        ))}
+        {/* Vertical stripes */}
+        {Array.from({ length: 30 }).map((_, i) => (
+          <Rect
+            key={`v${i}`}
+            x={i * 40} y="0"
+            width="20" height="100%"
+            fill="rgba(237, 188, 25, 0.25)"
+          />
+        ))}
+      </Svg>
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -18,56 +48,62 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/images/Login_Screen.png')}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.container}>
-        <View style={styles.loginSection}>
-          <Text style={styles.title}>LOGIN</Text>
+    // <ImageBackground
+    //   source={require('../assets/images/Login_Screen.png')}
+    //   style={styles.background}
+    //   resizeMode="cover"
+    // >
+      <View style = {styles.background}>
+        <PicnicBackground />
+          <View style={styles.container}>
+            <View style={styles.loginSection}>
+              <Text style={styles.title}>LOGIN</Text>
 
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="User"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholderTextColor="#888"
-            style={styles.input}
-          />
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="User"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholderTextColor="#888"
+                style={styles.input}
+              />
 
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            secureTextEntry
-            placeholderTextColor="#888"
-            style={styles.input}
-          />
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Password"
+                secureTextEntry
+                placeholderTextColor="#888"
+                style={styles.input}
+              />
 
-          {!!error && <Text style={styles.error}>{error}</Text>}
+              {!!error && <Text style={styles.error}>{error}</Text>}
 
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-            onPress={handleLogin}
-          >
-            <Text style={styles.buttonText}>Login</Text>
-          </Pressable>
-        </View>
+              <Pressable
+                style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+                onPress={handleLogin}
+              >
+                <Text style={styles.buttonText}>Login</Text>
+              </Pressable>
+            </View>
+            <View style={styles.skipContainer}>
+              <Pressable onPress={() => router.replace('/home')}>
+                <Text style={styles.skipText}>Skip Login (dev mode) </Text>
+              </Pressable>
+            </View>
+            <View style={styles.createSection}>
+              <Text style={styles.newCrafter}>New Crafter?</Text>
 
-        <View style={styles.createSection}>
-          <Text style={styles.newCrafter}>New Crafter?</Text>
-
-          <Pressable
-            style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
-            onPress={() => router.push('/register')}
-          >
-            <Text style={styles.createButtonText}>Create Account</Text>
-          </Pressable>
-        </View>
-      </View>
-    </ImageBackground>
+              <Pressable
+                style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
+                onPress={() => router.push('/register')}
+              >
+                <Text style={styles.createButtonText}>Create Account</Text>
+              </Pressable>
+            </View>
+          </View>
+    </View>
   );
 }
 
@@ -102,7 +138,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 48,
     borderWidth: 2,
-    borderColor: '#c8940a',
+    borderColor: '#648aae',
     borderRadius: 6,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 14,
@@ -123,8 +159,10 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#c8940a',
-    backgroundColor: '#FFFFFF',
+    // borderColor: '#c8940a',
+    // backgroundColor: '#FFFFFF',
+    borderColor: '#348fd9',
+    backgroundColor: '#9cdeff',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
@@ -148,12 +186,21 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 12,
   },
-  createButton: {
-    width: '84%',
-    height: 50,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
+  skipContainer:{
+    padding: 10,
+    backgroundColor: 'rgba(253, 231, 142, 0.9)',
+    borderRadius: 6,
     borderColor: '#c8940a',
+    borderWidth: 2,
+    marginTop: 20,
+  },
+  createButton: {
+    width: '58%',
+    height: 50,
+    //backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#348fd9',
+    backgroundColor: '#9cdeff',
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
