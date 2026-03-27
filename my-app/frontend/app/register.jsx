@@ -1,29 +1,77 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
-import {useUser} from '@/context/UserContext';
-import {useState} from 'react';
+import { supabase } from '@/lib/supabaseClient';
  
 export default function RegisterScreen() {
-  const{setUser} = useUser();
-  const[username, setUsername] = useState('');
-  const[password, setPassword] = useState('');
-  const[error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleRegister = () => {
-    if(!username || !password) {
-      setError('Please enter both username and password');
+  const handleRegister = async () => {
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter both email and password.');
       return;
     }
 
-    // replace with real api call later
-    setUser({username});
-    router.replace('/home');
+    if (password.trim().length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (!supabase) {
+      setError('Supabase is not configured. Add your .env keys and restart Expo.');
+      return;
+    }
+
+    setError('');
+    setIsLoading(true);
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
+
+    setIsLoading(false);
+
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    router.replace('/');
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
-      <Text style={styles.subtitle}>Registration form goes here.</Text>
+      <Text style={styles.subtitle}>Sign up with your email.</Text>
+
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        placeholderTextColor="#888"
+        style={styles.input}
+      />
+
+      <TextInput
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+        placeholderTextColor="#888"
+        style={styles.input}
+      />
+
+      {!!error && <Text style={styles.error}>{error}</Text>}
+
+      <Pressable style={styles.button} onPress={handleRegister} disabled={isLoading}>
+        <Text style={styles.buttonText}>{isLoading ? 'Creating...' : 'Create Account'}</Text>
+      </Pressable>
 
       <Pressable style={styles.button} onPress={() => router.back()}>
         <Text style={styles.buttonText}>Back</Text>
@@ -49,16 +97,35 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#6B7280',
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  input: {
+    width: '100%',
+    height: 48,
+    borderWidth: 2,
+    borderColor: '#648aae',
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    fontSize: 17,
+    color: '#333',
+  },
+  error: {
+    color: '#DC2626',
+    marginBottom: 12,
+    fontSize: 14,
+    alignSelf: 'flex-start',
   },
   button: {
-    minWidth: 120,
+    minWidth: 180,
     height: 44,
     borderRadius: 8,
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    marginTop: 8,
   },
   buttonText: {
     color: '#FFFFFF',

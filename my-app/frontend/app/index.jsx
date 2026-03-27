@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Svg, Rect } from 'react-native-svg';
+import { supabase } from '@/lib/supabaseClient';
 
 function PicnicBackground() {
   return (
@@ -36,15 +37,35 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setError('Please enter your email and password.');
       return;
     }
 
+    if (!supabase) {
+      setError('Supabase is not configured. Add your .env keys and restart Expo.');
+      return;
+    }
+
     setError('');
-    router.replace('./home');
+    setIsLoading(true);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setIsLoading(false);
+
+    if (signInError) {
+      setError(signInError.message);
+      return;
+    }
+
+    router.replace('/home');
   };
 
   return (
@@ -83,8 +104,9 @@ export default function LoginScreen() {
               <Pressable
                 style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
                 onPress={handleLogin}
+                disabled={isLoading}
               >
-                <Text style={styles.buttonText}>Login</Text>
+                <Text style={styles.buttonText}>{isLoading ? 'Logging in...' : 'Login'}</Text>
               </Pressable>
             </View>
             <View style={styles.skipContainer}>
