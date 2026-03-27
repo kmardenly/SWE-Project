@@ -1,54 +1,59 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {homeStyles} from '../../constants/homeStyles';
+//import { Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
 import { router } from 'expo-router';
-
+import { Ionicons } from '@expo/vector-icons';
+import  {useUser} from '@/context/UserContext';
 export default function HomeScreen() {
+  const { user } = useUser();
   const handleLogout = () => {
     router.replace('/');
   };
+  const [search, setSearch] = useState('');
+
+    let user_text = ""
+      if (user !== null && user!== undefined){
+        user_text = user.username
+      }else{
+        user_text = "<User_Placeholder>"
+      }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Home Page</Text>
-      <Text style={styles.subtitle}>You are logged in.</Text>
+    <View style={homeStyles.container}>
+        <View style = {homeStyles.header}>
+          <Text style={homeStyles.title}>My Craft</Text>
+          <View style = {homeStyles.headerRight}>
+            <View style = {homeStyles.searchContainer}>
+              <Ionicons name = "search-outline" size = {16} color = "#888"/>
+              <TextInput
+              style = {homeStyles.searchInput}
+              placeholder = "Search!"
+              placeholderTextColor = "#888"
+              value = {search}
+                onChangeText = {setSearch}
+            />
+              {search.length > 0 && (
+                <Pressable onPress={() => setSearch('')}>
+                  <Ionicons name = "close-circle" size = {16} color = "#888"/>
+                </Pressable>
+              )}
+            </View>
+            
+            <Pressable style={homeStyles.button} onPress={handleLogout}>
+              <Text style={homeStyles.buttonText}>Log Out</Text>
+            </Pressable>
+          </View>
+      </View>
+     
 
-      <Pressable style={styles.button} onPress={handleLogout}>
-        <Text style={styles.buttonText}>Log Out</Text>
-      </Pressable>
+      
+      <Text style = {homeStyles.welcome}>Welcome back, {user_text}!</Text>
+
+
+      <Text style={homeStyles.subtitle}>You are logged in.</Text>
+
+     
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginBottom: 24,
-  },
-  button: {
-    minWidth: 140,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});

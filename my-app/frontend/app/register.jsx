@@ -1,7 +1,25 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-
+import {useUser} from '@/context/UserContext';
+import {useState} from 'react';
+ 
 export default function RegisterScreen() {
+  const{setUser} = useUser();
+  const[username, setUsername] = useState('');
+  const[password, setPassword] = useState('');
+  const[error, setError] = useState('');
+
+  const handleRegister = () => {
+    if(!username || !password) {
+      setError('Please enter both username and password');
+      return;
+    }
+
+    // replace with real api call later
+    setUser({username});
+    router.replace('/home');
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
