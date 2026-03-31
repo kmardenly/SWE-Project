@@ -23,7 +23,6 @@ const getStorage = () => {
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-/** Client is null until both URL and anon key are set in `.env`. */
 export const supabase =
   typeof supabaseUrl === 'string' &&
   supabaseUrl.trim().length > 0 &&
