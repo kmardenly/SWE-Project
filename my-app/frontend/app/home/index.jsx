@@ -8,6 +8,7 @@ import  {useUser} from '@/context/UserContext';
 import { supabase } from '@/lib/supabaseClient';
 import NotificationModal from '@/components/notificationScreen';
 import StreakModal from '@/components/streakModal';
+import CatWidget from '@/components/cat-widget';
 
 // Mock notifications — replace with real data later
 const MOCK_NOTIFICATIONS = [
@@ -82,7 +83,12 @@ export default function HomeScreen() {
         <Ionicons name="folder-open-outline" size={16} color="#888" />
         <Text style={homeStyles.projectsText}>my projects</Text>
       </Pressable>
-      
+     
+      <CatWidget mood="happy" />  
+      <CatWidget mood="sad" />    
+      <CatWidget mood="playful" />
+      <CatWindow mood="default" />
+
       <Text style={homeStyles.subtitle}>You are logged in.</Text>
       
       <NotificationModal
