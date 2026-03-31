@@ -31,7 +31,7 @@ export default function RegisterScreen() {
     setError('');
     setIsLoading(true);
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
     });
@@ -40,6 +40,21 @@ export default function RegisterScreen() {
 
     if (signUpError) {
       setError(signUpError.message);
+      return;
+    }
+
+    const { error: profileError } = await supabase
+    .from('users')
+    .update({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+    })
+    .eq('user_id', data.user.id);
+
+    setIsLoading(false);
+
+    if (profileError) {
+      setError('Account created, but failed to save name: ' + profileError.message);
       return;
     }
 
