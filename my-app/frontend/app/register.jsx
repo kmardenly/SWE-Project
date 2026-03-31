@@ -5,12 +5,29 @@ import { supabase } from '@/lib/supabaseClient';
 import PicnicBackground from '../components/PicnicBackground';
  
 export default function RegisterScreen() {
-  const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [userNameAvailable, setUserNameAvailable] = useState(null);
+
+const checkUserName = async (name) => {
+  if (name.trim().length < 3) {
+    setUserNameAvailable(null);
+    return;
+  }
+
+  const { data } = await supabase
+    .from('users')
+    .select('display_name')
+    .eq('display_name', name.trim())
+    .maybeSingle();
+
+  setUserNameAvailable(!data); // true if no match found
+};
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim()) {
@@ -43,18 +60,24 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!userNameAvailable) {
+        setError('Please choose an available username.');
+          return;
+}
+
     const { error: profileError } = await supabase
     .from('users')
     .update({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
+      display_name: userName.trim(),
     })
     .eq('user_id', data.user.id);
 
     setIsLoading(false);
 
     if (profileError) {
-      setError('Account created, but failed to save name: ' + profileError.message);
+      setError('Account created, but failed to save profile info: ' + profileError.message);
       return;
     }
 
@@ -84,6 +107,28 @@ export default function RegisterScreen() {
           placeholderTextColor="#888"
           style={styles.input}
         />
+        <TextInput
+        value={userName}
+        onChangeText={(text) => {
+          setUserName(text);
+          checkUserName(text);
+        }}
+        placeholder="User Name"
+        autoCapitalize="none"  // usernames shouldn't auto-capitalize
+        placeholderTextColor="#888"
+        style={styles.input}
+      />
+      {userName.length >= 3 && (
+        <Text style={{ 
+          color: userNameAvailable ? 'green' : 'red', 
+          alignSelf: 'flex-start',
+          fontFamily: 'Gaegu',
+          fontSize: 14,
+          marginBottom: 6,
+        }}>
+          {userNameAvailable ? 'Username available' : 'Username taken'}
+        </Text>
+)}
         <TextInput
           value={email}
           onChangeText={setEmail}
