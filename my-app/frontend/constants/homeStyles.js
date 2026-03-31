@@ -76,4 +76,14 @@ export const homeStyles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  notifications: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8, // space between icon and text
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  }
 });
