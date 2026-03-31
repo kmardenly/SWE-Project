@@ -14,6 +14,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'list.bullet': 'format-list-bulleted',
   'square.and.pencil': 'edit',
+  'person.fill': 'person',
 };
 
 /**
