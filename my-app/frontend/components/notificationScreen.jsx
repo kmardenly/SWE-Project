@@ -43,5 +43,56 @@ export default function NotificationModal({ visible, onClose, notifications }) {
 }
 
 const styles = StyleSheet.create({
-  // ...same styles as before
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  panel: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    width: 300,
+    maxHeight: 400,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  panelTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  empty: {
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 8,
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  notifMessage: {
+    fontSize: 14,
+    color: '#333',
+  },
+  notifTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+  },
 });
