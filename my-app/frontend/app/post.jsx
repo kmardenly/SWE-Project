@@ -14,6 +14,10 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import  {useUser} from '@/context/UserContext';
+import {supabase} from "@/lib/supabaseClient";
+
+console.log("supabase client:", supabase);//import supabase debug
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -21,12 +25,13 @@ const BASE_WIDTH = 390;
 const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 
-const CRAFT_TYPES = ['knitting', 'crochet', 'embroidery', 'weaving', 'sewing', 'other'];
+const CRAFT_TYPES = ['test','knitting', 'crochet', 'embroidery', 'weaving', 'sewing', 'other'];
 const PINK = '#c49a9a';
 const CREAM = '#f5f0e8';
 const DARK = '#5c3d3d';
 
 export default function CreatePostScreen() {
+  const {user} = useUser();
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [craftType, setCraftType] = useState('');
@@ -64,8 +69,59 @@ export default function CreatePostScreen() {
     }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     Alert.alert('Post shared', 'Your post has been shared! :D');
+
+    if (!supabase) {
+      console.log("Supabase is not configured.");
+      return;
+    }
+
+    console.log('share pressed'); //quick share debug
+    //alert('share pressed');
+    console.log(user.user_id)
+
+
+    //inserting new content here
+    const content = JSON.stringify({
+      title: title.trim(),
+      caption: caption.trim(),
+      craftType: craftType,
+      tags,
+    });
+
+    //inserting into post here
+    const { data: post, error: postError } = await supabase
+        .from('posts')
+        .insert([
+          {
+            creator_id: user.id,
+            content,
+          },
+        ])
+        .select()
+        .single();
+
+    if (postError) throw postError;
+
+    if (selectedImageUri) {
+      const { error: mediaError } = await supabase
+          .from('post_media')
+          .insert([
+            {
+              post_id: post.post_id,
+              media_url: selectedImageUri,
+              media_type: 'image',
+              order: 0,
+            },
+          ]);
+
+      if (mediaError) throw mediaError;
+    }
+
+    alert('Post shared!');
+    router.back();
+
   };
 
   return (
