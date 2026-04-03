@@ -1,37 +1,9 @@
 import { useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Svg, Rect } from 'react-native-svg';
 import { supabase } from '@/lib/supabaseClient';
-
-function PicnicBackground() {
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%">
-        {/* Base yellow */}
-        <Rect width="100%" height="100%" fill="#ffeebb" />
-        {/* Horizontal stripes */}
-        {Array.from({ length: 40 }).map((_, i) => (
-          <Rect
-            key={`h${i}`}
-            x="0" y={i * 40}
-            width="100%" height="20"
-            fill="rgba(255, 220, 124, 0.25)"
-          />
-        ))}
-        {/* Vertical stripes */}
-        {Array.from({ length: 30 }).map((_, i) => (
-          <Rect
-            key={`v${i}`}
-            x={i * 40} y="0"
-            width="20" height="100%"
-            fill="rgba(237, 188, 25, 0.25)"
-          />
-        ))}
-      </Svg>
-    </View>
-  );
-}
+import PicnicBackground from '../components/PicnicBackground';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
