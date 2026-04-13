@@ -6,7 +6,13 @@ import 'react-native-reanimated';
 import { Gaegu_400Regular, Gaegu_700Bold } from '@expo-google-fonts/gaegu';
 import { Gafata_400Regular } from '@expo-google-fonts/gafata';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BASE_WIDTH = 390;
+const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
+const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
+const DARK = '#5c3d3d';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '../lib/supabaseClient';
@@ -58,7 +64,9 @@ export default function RootLayout() {
           </Stack>
 
           {pathname !== '/' && pathname !== '/post' && (
-            <Pressable style={styles.postButton} onPress={() => router.push('/post')}>
+            <Pressable
+              style={({ pressed }) => [styles.postButton, pressed && styles.postButtonPressed]}
+              onPress={() => router.push('/post')}>
               <Text style={styles.postButtonText}>Post</Text>
             </Pressable>
           )}
@@ -77,22 +85,26 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 18,
     bottom: 92,
-    minWidth: 90,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#111827',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: responsive(36, 28, 48),
+    paddingVertical: responsive(14, 10, 18),
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    elevation: 4,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  postButtonPressed: {
+    backgroundColor: '#f4ecec',
+    transform: [{ scale: 0.98 }],
   },
   postButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 15,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 18, 26),
+    color: DARK,
+    letterSpacing: 0.5,
   },
 });

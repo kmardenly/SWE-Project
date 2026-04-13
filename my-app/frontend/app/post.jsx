@@ -70,7 +70,10 @@ export default function CreatePostScreen() {
   };
 
   const handleShare = async () => {
-    Alert.alert('Post shared', 'Your post has been shared! :D');
+    if (!title.trim() || !selectedImageUri) {
+      Alert.alert('Add a title/description');
+      return;
+    }
 
     if (!supabase) {
       console.log("Supabase is not configured.");
@@ -132,7 +135,7 @@ export default function CreatePostScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={20} color={DARK} />
+          <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
         </Pressable>
         <View style={{ width: 36 }} />
       </View>
