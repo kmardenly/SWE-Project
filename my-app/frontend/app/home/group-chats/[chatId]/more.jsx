@@ -1,0 +1,218 @@
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+
+import { fetchGroupChat } from '@/lib/groupChats.service';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BASE_WIDTH = 390;
+const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
+const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
+const DARK = '#5c3d3d';
+
+function SettingsRow({ icon, label, value }) {
+  return (
+    <View style={styles.settingsRow}>
+      <Ionicons name={icon} size={26} color={DARK} />
+      <Text style={styles.settingsLabel}>{label}</Text>
+      <Text style={styles.settingsValue}>{value}</Text>
+    </View>
+  );
+}
+
+export default function GroupChatMoreScreen() {
+  const { chatId } = useLocalSearchParams();
+  const [chat, setChat] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchGroupChat(chatId).then((data) => {
+      if (mounted) setChat(data);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [chatId]);
+
+  if (!chat) return null;
+
+  return (
+    <View style={styles.root}>
+      <Image
+        source={require('@/assets/images/explore_background.png')}
+        resizeMode="cover"
+        style={styles.backgroundLayer}
+      />
+
+      <View style={styles.foreground}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12}>
+            <Ionicons name="arrow-back" size={30} color={DARK} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Group Details</Text>
+          <View style={styles.spacer} />
+        </View>
+
+        <View style={styles.avatarCircle} />
+
+        <View style={styles.iconRow}>
+          <Pressable style={styles.iconBtn}>
+            <Ionicons name="create-outline" size={34} color={DARK} />
+          </Pressable>
+          <Pressable style={styles.iconBtn}>
+            <Ionicons name="person-add-outline" size={34} color={DARK} />
+          </Pressable>
+          <Pressable style={styles.iconBtn}>
+            <Ionicons name="exit-outline" size={34} color={DARK} />
+          </Pressable>
+        </View>
+
+        <View style={styles.membersHeader}>
+          <Text style={styles.membersHeaderText}>Group Members | {chat.memberCount}</Text>
+        </View>
+
+        <ScrollView style={styles.membersCard} contentContainerStyle={styles.membersContent}>
+          {chat.members.map((member) => (
+            <View key={member} style={styles.memberRow}>
+              <View style={styles.memberDot} />
+              <Text style={styles.memberName}>{member}</Text>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.settingsCard}>
+          <Text style={styles.settingsTitle}>Customization</Text>
+          <SettingsRow icon="document-text-outline" label="Description" value={chat.settings.description} />
+          <SettingsRow icon="notifications-outline" label="Mute" value={chat.settings.isMuted ? 'On' : 'Off'} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#f2e4e4',
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  foreground: {
+    flex: 1,
+    paddingTop: responsive(58, 48, 70),
+    paddingHorizontal: 24,
+    paddingBottom: 18,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(40, 28, 44),
+    color: DARK,
+  },
+  spacer: {
+    width: 30,
+  },
+  avatarCircle: {
+    alignSelf: 'center',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#d3d4d4',
+    marginBottom: 18,
+  },
+  iconRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 22,
+    marginBottom: 18,
+  },
+  iconBtn: {
+    width: 48,
+    alignItems: 'center',
+  },
+  membersHeader: {
+    borderWidth: 1,
+    borderColor: '#bb9c9c',
+    borderRadius: 10,
+    backgroundColor: '#e8cfd1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  membersHeaderText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(33, 22, 37),
+    color: '#6c5656',
+  },
+  membersCard: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#c9b69e',
+    backgroundColor: '#f4f2e5',
+    marginBottom: 14,
+  },
+  membersContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberDot: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: '#d6d8d8',
+  },
+  memberName: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(39, 24, 43),
+    color: DARK,
+  },
+  settingsCard: {
+    borderWidth: 1,
+    borderColor: '#c4adad',
+    borderRadius: 10,
+    backgroundColor: '#f5e1e1',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  settingsTitle: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(30, 22, 34),
+    color: DARK,
+    marginBottom: 6,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  settingsLabel: {
+    marginLeft: 8,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(26, 18, 32),
+    color: DARK,
+  },
+  settingsValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(23, 17, 28),
+    color: '#7f6666',
+  },
+});

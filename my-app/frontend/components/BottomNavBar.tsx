@@ -10,6 +10,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Home',     icon: 'home-outline',          route: '/home' },
+  { label: 'Chats',    icon: 'chatbubbles-outline',   route: '/home/group-chats' },
   { label: 'Projects', icon: 'folder-open-outline',   route: '/home/projects' },
   { label: 'Add',      icon: 'add-circle-outline',    route: '/home/new' },
   { label: 'Feed',     icon: 'newspaper-outline',     route: '/home/feed' },
