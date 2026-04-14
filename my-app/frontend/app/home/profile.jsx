@@ -1,26 +1,6 @@
+import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { useUser } from '@/context/UserContext';
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import {
-  getFollowersCount,
-  getFollowingCount,
-  getFollowersList,
-  getFollowingList,
-  unfollowUser,
-  removeFollower,
-  getDisplayName,
-} from '@/services/follows.service';
 
 
 export default function ProfileScreen() {

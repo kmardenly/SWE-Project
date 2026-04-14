@@ -3,3 +3,9 @@ my-app/.env
 my-app/.env
 my-app/.env
 .expo/
+my-app/.dockerignore
+my-app/compose.yaml
+my-app/Dockerfile
+my-app/README.Docker.md
+my-app/supabase/.branches/_current_branch
+my-app/supabase/.temp/cli-latest
