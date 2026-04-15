@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 
-import BottomNavBar from '@/components/BottomNavBar';
 import { fetchGroupChats } from '@/lib/groupChats.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -92,7 +91,6 @@ export default function GroupChatsScreen() {
           ) : null}
         </ScrollView>
 
-        <BottomNavBar active="Chats" />
       </View>
     </View>
   );
@@ -173,7 +171,7 @@ const styles = StyleSheet.create({
   },
   chatName: {
     fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(35, 25, 40),
+    fontSize: responsive(30, 22, 36),
     color: DARK,
     lineHeight: responsive(36, 28, 42),
   },
