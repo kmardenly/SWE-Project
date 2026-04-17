@@ -1,4 +1,15 @@
 import React, { useEffect, useState } from 'react';
+
+// IMPORTANT: this is the code snippet we need to route to the other.profile.jsx, put it anywhere that you would click
+// to reach someone's profile
+//               onPress={() =>
+//                   router.push({
+//                     pathname: '/home/other.profile',
+//                     params: { userId: item.user_id },
+//                   })
+//               }
+// right now, i have it in renderFollowersItem and renderFollowingItem but it should prob also be implemented into search
+// bar/search results functionality
 import {
   ActivityIndicator,
   Alert,
@@ -20,8 +31,10 @@ import {
   removeFollower,
   getDisplayName,
 } from '../../FE-services/follows.service';
+import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { user } = useUser();
   const currentUserId = user?.id;
 
@@ -50,6 +63,20 @@ export default function ProfileScreen() {
 
     setFollowersCount(followersTotal);
     setFollowingCount(followingTotal);
+  }
+
+  function goToOtherProfile(targetUserId) {
+    if (!targetUserId) return;
+
+    setFollowersModalVisible(false);
+    setFollowingModalVisible(false);
+
+    setTimeout(() => {
+      router.push({
+        pathname: '/home/other.profile',
+        params: { userId: targetUserId },
+      });
+    }, 150);
   }
 
   async function loadProfileData() {
@@ -135,10 +162,13 @@ export default function ProfileScreen() {
 
     return (
         <View style={styles.listItem}>
-          <View style={styles.listTextContainer}>
+          <Pressable
+              style={styles.listTextContainer}
+              onPress={() => goToOtherProfile(item.user_id)}
+          >
             <Text style={styles.listName}>{getDisplayName(item)}</Text>
             {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
-          </View>
+          </Pressable>
 
           <Pressable
               style={[styles.actionButton, styles.removeButton]}
@@ -158,10 +188,13 @@ export default function ProfileScreen() {
 
     return (
         <View style={styles.listItem}>
-          <View style={styles.listTextContainer}>
+          <Pressable
+              style={styles.listTextContainer}
+              onPress={() => goToOtherProfile(item.user_id)}
+          >
             <Text style={styles.listName}>{getDisplayName(item)}</Text>
             {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
-          </View>
+          </Pressable>
 
           <Pressable
               style={[styles.actionButton, styles.unfollowButton]}
@@ -357,6 +390,7 @@ const styles = StyleSheet.create({
   },
   listTextContainer: {
     flex: 1,
+    paddingVertical: 4,
   },
   listName: {
     fontSize: 16,
