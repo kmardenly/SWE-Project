@@ -36,6 +36,7 @@ export default function ExplorePhotoScreen() {
   const [comment, setComment] = useState('');
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -120,14 +121,17 @@ export default function ExplorePhotoScreen() {
 
               {/* Photo */}
               <View style={[styles.photoFrame, { width: photoWidth }]}>
-                {item.imageUrl ? (
+                {item.imageUrl && !imageFailed ? (
                   <Image
                     source={{ uri: item.imageUrl }}
                     style={[styles.photo, { width: photoWidth, height: photoHeight }]}
                     resizeMode="cover"
+                    onError={() => setImageFailed(true)}
                   />
                 ) : (
-                  <View style={[styles.photo, { width: photoWidth, height: photoHeight }]} />
+                  <View style={[styles.photo, styles.photoFallback, { width: photoWidth, height: photoHeight }]}>
+                    <Text style={styles.photoFallbackText}>image unavailable</Text>
+                  </View>
                 )}
               </View>
 
@@ -257,7 +261,16 @@ const styles = StyleSheet.create({
   },
   photo: {
     borderRadius: responsive(12, 10, 14),
-    backgroundColor: '#000000',
+    backgroundColor: '#e9ddd3',
+  },
+  photoFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoFallbackText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 14, 20),
+    color: '#8d6f6f',
   },
 
   // Action bar
