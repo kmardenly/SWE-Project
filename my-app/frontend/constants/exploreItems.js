@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { Platform } from 'react-native';
 
 function parseContent(content) {
   if (typeof content !== 'string' || !content.trim()) return {};
@@ -10,7 +11,7 @@ function parseContent(content) {
   }
 }
 
-function normalizePost(post, media = []) {
+async function normalizePost(post, media = []) {
   const parsed = parseContent(post?.content);
   const orderedMedia = [...(media || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const firstImage = orderedMedia.find((m) => m.media_type === 'image')?.media_url ?? null;
@@ -22,16 +23,65 @@ function normalizePost(post, media = []) {
     craftType: parsed.craftType?.trim() || 'Craft',
     caption: parsed.caption?.trim() || '',
     tags: Array.isArray(parsed.tags) ? parsed.tags.filter(Boolean) : [],
-    imageUrl: resolveMediaUrl(firstImage),
+    imageUrl: await resolveMediaUrl(firstImage),
     createdAt: post.created_at ?? null,
   };
 }
 
-function resolveMediaUrl(rawUrl) {
+function parseBucketAndPath(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+
+  const storagePathPattern = /\/storage\/v1\/object\/(?:public|authenticated|sign)\/([^/?#]+)\/([^?#]+)/;
+  const storageMatch = normalized.match(storagePathPattern);
+  if (storageMatch) {
+    const bucket = storageMatch[1];
+    const objectPath = decodeURIComponent(storageMatch[2]);
+    if (bucket && objectPath) return { bucket, objectPath };
+  }
+
+  const slashIndex = normalized.indexOf('/');
+  if (slashIndex > 0) {
+    const bucket = normalized.slice(0, slashIndex);
+    const objectPath = normalized.slice(slashIndex + 1);
+    if (bucket && objectPath && !bucket.includes(':')) {
+      return { bucket, objectPath };
+    }
+  }
+
+  return null;
+}
+
+async function resolveMediaUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
 
   const value = rawUrl.trim();
   if (!value) return null;
+
+  // React Native on iOS/Android cannot reliably fetch blob: URLs for <Image>.
+  // Ignore them on native so the UI falls back to a placeholder instead of crashing.
+  if (value.startsWith('blob:') && Platform.OS !== 'web') {
+    return null;
+  }
+
+  // file:// URLs point to local device storage and are not shareable across users/devices.
+  if (value.startsWith('file://') && Platform.OS !== 'web') {
+    return null;
+  }
+
+  const storageLocation = parseBucketAndPath(value);
+  if (storageLocation && supabase) {
+    const { bucket, objectPath } = storageLocation;
+
+    const { data: signedData } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(objectPath, 60 * 60);
+
+    if (signedData?.signedUrl) return encodeURI(signedData.signedUrl);
+
+    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    if (publicData?.publicUrl) return encodeURI(publicData.publicUrl);
+  }
 
   // Already renderable by React Native Image.
   if (
@@ -92,7 +142,9 @@ export async function fetchExploreItems() {
     return acc;
   }, {});
 
-  return posts.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []));
+  return Promise.all(
+    posts.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []))
+  );
 }
 
 export async function fetchExploreItemById(id) {
@@ -114,5 +166,5 @@ export async function fetchExploreItemById(id) {
 
   if (mediaError) throw mediaError;
 
-  return normalizePost(post, mediaRows || []);
+  return await normalizePost(post, mediaRows || []);
 }

@@ -38,15 +38,24 @@ const COLUMN_GAP = responsive(8, 6, 12);
 const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
 
 function CraftCard({ item }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
   return (
     <Pressable
       onPress={() => router.push(`/home/explore/${item.id}`)}
       style={({ pressed }) => [pressed && styles.cardPressed]}>
       <View>
-        {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.cardImagePlaceholder} resizeMode="cover" />
+        {item.imageUrl && !imageFailed ? (
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={styles.cardImagePlaceholder}
+            resizeMode="cover"
+            onError={() => setImageFailed(true)}
+          />
         ) : (
-          <View style={styles.cardImagePlaceholder} />
+          <View style={styles.cardImagePlaceholder}>
+            <Text style={styles.missingImageText}>image unavailable</Text>
+          </View>
         )}
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.craftType}>{item.craftType}</Text>
@@ -245,9 +254,16 @@ const styles = StyleSheet.create({
   cardImagePlaceholder: {
     width: COL_WIDTH,
     height: COL_WIDTH * 0.85,
-    backgroundColor: '#000000',
+    backgroundColor: '#e9ddd3',
     borderRadius: responsive(12, 10, 14),
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  missingImageText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(14, 12, 16),
+    color: '#8d6f6f',
   },
   cardTitle: {
     fontFamily: 'Gaegu-Bold',
