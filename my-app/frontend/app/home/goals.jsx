@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  Alert,
   Dimensions,
   Image,
-  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,528 +11,652 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import CatWindow from '@/components/cat-widget';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
 const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
-const UNIFORM_TEXT_SIZE = responsive(16, 13, 20);
-const TEXT_COLOR = '#4f4545';
+const DARK = '#5c3d3d';
 
-const INITIAL_GOALS = [];
+const MAX_SLIDER_DAYS = 120;
+const MAX_EXTRA_DAYS = 2000;
+
+function addDaysToToday(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + Math.max(0, Math.floor(days)));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Display as MM.DD.YY (e.g. 08.15.26). Keeps ISO YYYY-MM-DD internally. */
+function formatDateDot(isoDate) {
+  if (!isoDate || isoDate === 'no deadline') {
+    return isoDate === 'no deadline' ? 'no deadline' : '--';
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate).trim());
+  if (!m) return String(isoDate);
+  const [, y, mo, day] = m;
+  return `${mo}.${day}.${y.slice(2)}`;
+}
+
+function normalizeSubGoal(item) {
+  if (typeof item === 'string') return { text: item, completed: false };
+  return {
+    text: item?.text ?? '',
+    completed: Boolean(item?.completed),
+  };
+}
+
+function getEffectiveDeadlineDays(sliderVal, extraBeyond120) {
+  if (sliderVal <= 0) return 0;
+  if (sliderVal < MAX_SLIDER_DAYS) return sliderVal;
+  return Math.min(MAX_SLIDER_DAYS + Math.max(0, extraBeyond120), MAX_SLIDER_DAYS + MAX_EXTRA_DAYS);
+}
+
+const INITIAL_GOALS = [
+  {
+    id: 'g1',
+    title: 'Finish kitten tote',
+    deadline: '2026-05-10',
+    subGoals: [
+      { text: 'Cut fabric', completed: false },
+      { text: 'Sew sides', completed: false },
+      { text: 'Attach straps', completed: false },
+    ],
+    completed: false,
+    completedAt: null,
+  },
+  {
+    id: 'g2',
+    title: 'Paint shelf',
+    deadline: '2026-05-22',
+    subGoals: [
+      { text: 'Sand edges', completed: false },
+      { text: 'Prime coat', completed: false },
+    ],
+    completed: false,
+    completedAt: null,
+  },
+];
+
+function GoalCard({ goal, onDelete, onToggleComplete, onToggleSubGoal }) {
+  const done = Boolean(goal.completed);
+  const subGoals = (goal.subGoals ?? []).map(normalizeSubGoal);
+  return (
+    <View style={[styles.goalCard, done && styles.goalCardDone]}>
+      <View style={styles.goalCardHeader}>
+        <Pressable
+          onPress={() => onToggleComplete(goal.id)}
+          style={styles.completeRow}
+          hitSlop={4}>
+          <View style={[styles.checkbox, done && styles.checkboxChecked]}>
+            {done ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          </View>
+          <Text style={[styles.goalTitle, done && styles.goalTitleDone]} numberOfLines={2}>
+            {goal.title}
+          </Text>
+        </Pressable>
+        <Pressable onPress={() => onDelete(goal.id)} hitSlop={8} style={styles.deleteButton}>
+          <Ionicons name="close" size={16} color="#7d6666" />
+        </Pressable>
+      </View>
+      <Text style={[styles.goalDeadline, done && styles.goalMetaDone]}>
+        deadline {formatDateDot(goal.deadline)}
+        {done && goal.completedAt ? ` · done ${formatDateDot(goal.completedAt)}` : ''}
+      </Text>
+
+      {subGoals.length ? (
+        <View style={styles.subGoalsWrap}>
+          {subGoals.map((subGoal, index) => (
+            <Pressable
+              key={`${goal.id}-sub-${index}`}
+              onPress={() => onToggleSubGoal(goal.id, index)}
+              style={styles.subGoalRow}
+              hitSlop={4}>
+              <View style={[styles.subCheckbox, subGoal.completed && styles.subCheckboxChecked]}>
+                {subGoal.completed ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+              </View>
+              <Text
+                style={[styles.subGoalText, subGoal.completed && styles.subGoalDone]}
+                numberOfLines={3}>
+                {`sub-goal ${index + 1}: ${subGoal.text}`}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 export default function GoalsScreen() {
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef(null);
   const [goals, setGoals] = useState(INITIAL_GOALS);
-  const [showAddGoal, setShowAddGoal] = useState(false);
-  const [goalNameInput, setGoalNameInput] = useState('');
-  const [addDeadline, setAddDeadline] = useState(false);
-  const [deadlineInput, setDeadlineInput] = useState('');
-  const [addSubGoals, setAddSubGoals] = useState([false, false, false]);
-  const [subGoalInputs, setSubGoalInputs] = useState(['', '', '']);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
-  const removeGoal = (goalId) => {
-    setGoals((prev) => prev.filter((g) => g.id !== goalId));
+  const [goalName, setGoalName] = useState('');
+  /** Slider 0 = none; 1–119 = days; 120 = 120+ (use extraBeyond120) */
+  const [deadlineSlider, setDeadlineSlider] = useState(0);
+  const [extraBeyond120, setExtraBeyond120] = useState(0);
+  const [subGoalInput, setSubGoalInput] = useState('');
+
+  const effectiveDays = getEffectiveDeadlineDays(deadlineSlider, extraBeyond120);
+
+  const handleAddGoal = () => {
+    const trimmedName = goalName.trim();
+    if (!trimmedName) return;
+
+    const subGoals = subGoalInput
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((text) => ({ text, completed: false }));
+
+    const deadlineLabel =
+      effectiveDays <= 0 ? 'no deadline' : addDaysToToday(effectiveDays);
+
+    setGoals((prev) => [
+      ...prev,
+      {
+        id: `g-${Date.now()}`,
+        title: trimmedName,
+        deadline: deadlineLabel,
+        subGoals,
+        completed: false,
+        completedAt: null,
+      },
+    ]);
+
+    setGoalName('');
+    setDeadlineSlider(0);
+    setExtraBeyond120(0);
+    setSubGoalInput('');
+    setIsAddOpen(false);
   };
 
-  const removeSubGoal = (goalId, subGoalIndex) => {
+  const handleDeleteGoal = (goalId) => {
+    setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
+  };
+
+  const handleToggleComplete = (goalId) => {
+    const today = new Date().toISOString().slice(0, 10);
     setGoals((prev) =>
-      prev.map((g) => {
-        if (g.id !== goalId || !Array.isArray(g.subGoals)) return g;
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        const nextCompleted = !goal.completed;
         return {
-          ...g,
-          subGoals: g.subGoals.filter((_, idx) => idx !== subGoalIndex),
+          ...goal,
+          completed: nextCompleted,
+          completedAt: nextCompleted ? today : null,
         };
       })
     );
   };
 
-  const resetAddGoalForm = () => {
-    setGoalNameInput('');
-    setAddDeadline(false);
-    setDeadlineInput('');
-    setAddSubGoals([false, false, false]);
-    setSubGoalInputs(['', '', '']);
+  const handleToggleSubGoal = (goalId, subIndex) => {
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        const subs = (goal.subGoals ?? []).map(normalizeSubGoal);
+        if (!subs[subIndex]) return goal;
+        const next = subs.map((s, i) =>
+          i === subIndex ? { ...s, completed: !s.completed } : s
+        );
+        return { ...goal, subGoals: next };
+      })
+    );
   };
 
-  const toggleSubGoal = (idx) => {
-    setAddSubGoals((prev) => {
-      const next = [...prev];
-      next[idx] = !next[idx];
-      return next;
-    });
-  };
-
-  const setSubGoalInput = (idx, value) => {
-    setSubGoalInputs((prev) => {
-      const next = [...prev];
-      next[idx] = value;
-      return next;
-    });
-  };
-
-  const handleSetGoal = () => {
-    const trimmedGoal = goalNameInput.trim();
-    if (!trimmedGoal) {
-      Alert.alert('Add a goal name');
+  const setTotalDaysFromInput = (text) => {
+    if (text === '' || text.trim() === '') {
+      setDeadlineSlider(0);
+      setExtraBeyond120(0);
       return;
     }
+    const n = parseInt(String(text).replace(/[^0-9]/g, ''), 10);
+    if (Number.isNaN(n) || n < 0) return;
+    const capped = Math.min(n, MAX_SLIDER_DAYS + MAX_EXTRA_DAYS);
+    if (capped <= 0) {
+      setDeadlineSlider(0);
+      setExtraBeyond120(0);
+      return;
+    }
+    if (capped < MAX_SLIDER_DAYS) {
+      setDeadlineSlider(capped);
+      setExtraBeyond120(0);
+      return;
+    }
+    setDeadlineSlider(MAX_SLIDER_DAYS);
+    setExtraBeyond120(capped - MAX_SLIDER_DAYS);
+  };
 
-    const builtSubGoals = subGoalInputs
-      .map((text, idx) => ({ text: text.trim(), idx }))
-      .filter((entry) => addSubGoals[entry.idx] && entry.text.length > 0)
-      .map((entry) => entry.text);
+  const completedCount = goals.filter((g) => g.completed).length;
+  const lastCompletedDate = goals
+    .filter((g) => g.completed && g.completedAt)
+    .reduce((latest, g) => (!latest || g.completedAt > latest ? g.completedAt : latest), null);
 
-    const newGoal = {
-      id: `goal-${Date.now()}`,
-      title: `${trimmedGoal}:`,
-      deadline:
-        addDeadline && deadlineInput.trim()
-          ? `deadline ${deadlineInput.trim()}`
-          : 'deadline 00-00-0000',
-      subGoals: builtSubGoals.length ? builtSubGoals : undefined,
-    };
-
-    setGoals((prev) => [newGoal, ...prev]);
-    resetAddGoalForm();
-    setShowAddGoal(false);
+  const handleFocusAddInputs = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
   };
 
   return (
-    <ImageBackground
-      source={require('@/assets/images/goal_bg.png')}
-      resizeMode="cover"
-      style={styles.root}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.profileRow}>
-          <View style={styles.catImageWrap}>
-            <Image source={require('@/assets/images/cat-default.png')} style={styles.catImage} />
-          </View>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>name:</Text>
-            <Text style={styles.infoValue}>[cat name]</Text>
-            <Text style={styles.infoLabel}>level:</Text>
-            <Text style={styles.infoValue}>[cat level]</Text>
-            <Text style={styles.infoLabel}>goals achieved:</Text>
-            <Text style={styles.infoValue}>[total # of goals met]</Text>
-            <Text style={styles.infoLabel}>goals until next level:</Text>
-            <Text style={styles.infoValue}>[# of goals]</Text>
-            <Text style={styles.infoLabel}>last goal completed on:</Text>
-            <Text style={styles.infoValue}>[00-00-0000]</Text>
-          </View>
+    <View style={styles.root}>
+      <Image
+        source={require('@/assets/images/explore_background.png')}
+        resizeMode="cover"
+        style={styles.backgroundLayer}
+      />
+      <KeyboardAvoidingView
+        style={[styles.foreground, { paddingTop: insets.top + 8 }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.headerRow}>
+          <Text style={styles.pageTitle}>My Goals</Text>
         </View>
 
-        {showAddGoal ? (
-          <View style={styles.addGoalPanel}>
-            <View style={styles.addGoalPanelHeader}>
-              <Text style={styles.addGoalPanelTitle}>add goal</Text>
-              <Pressable style={styles.deleteBtn} onPress={() => setShowAddGoal(false)}>
-                <Text style={styles.xMark}>×</Text>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.profileCard}>
+            <View style={styles.catWindowColumn}>
+              <CatWindow mood="happy" />
+            </View>
+            <View style={styles.profileTextBlock}>
+              <Text style={styles.profileText}>name: your craft cat</Text>
+              <Text style={styles.profileText}>level: 1</Text>
+              <Text style={styles.profileText}>goals achieved: {completedCount}</Text>
+              <Text style={styles.profileText}>
+                last goal completed: {lastCompletedDate ? formatDateDot(lastCompletedDate) : '--'}
+              </Text>
+            </View>
+          </View>
+
+          {goals.map((goal) => (
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              onDelete={handleDeleteGoal}
+              onToggleComplete={handleToggleComplete}
+              onToggleSubGoal={handleToggleSubGoal}
+            />
+          ))}
+
+          {isAddOpen ? (
+            <View style={styles.addSheet}>
+              <View style={styles.addHeader}>
+                <Text style={styles.addTitle}>add goal</Text>
+                <Pressable onPress={() => setIsAddOpen(false)} style={styles.deleteButton} hitSlop={8}>
+                  <Ionicons name="close" size={16} color="#7d6666" />
+                </Pressable>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="goal name"
+                placeholderTextColor="#9c8a8a"
+                value={goalName}
+                onChangeText={setGoalName}
+                onFocus={handleFocusAddInputs}
+              />
+              <View style={styles.deadlineBlock}>
+                <Text style={styles.deadlineLabel}>deadline</Text>
+                <Text style={styles.deadlineSummary}>
+                  {effectiveDays <= 0
+                    ? 'No deadline'
+                    : deadlineSlider === MAX_SLIDER_DAYS && extraBeyond120 > 0
+                      ? `In ${effectiveDays} days (120+) · ${formatDateDot(
+                          addDaysToToday(effectiveDays)
+                        )}`
+                      : `In ${effectiveDays} day${effectiveDays === 1 ? '' : 's'} · ${formatDateDot(
+                          addDaysToToday(effectiveDays)
+                        )}`}
+                </Text>
+                <Slider
+                  style={styles.deadlineSlider}
+                  minimumValue={0}
+                  maximumValue={MAX_SLIDER_DAYS}
+                  step={1}
+                  value={deadlineSlider}
+                  onValueChange={(v) => {
+                    const rounded = Math.round(v);
+                    setDeadlineSlider(rounded);
+                    if (rounded < MAX_SLIDER_DAYS) setExtraBeyond120(0);
+                  }}
+                  minimumTrackTintColor="#9f7f7f"
+                  maximumTrackTintColor="#e0d0d0"
+                  thumbTintColor="#5c3d3d"
+                />
+                <View style={styles.deadlineSliderLabels}>
+                  <Text style={styles.deadlineHint}>none</Text>
+                  <Text style={styles.deadlineHint}>120+</Text>
+                </View>
+                {deadlineSlider === MAX_SLIDER_DAYS ? (
+                  <View style={styles.extraDaysBlock}>
+                    <Text style={styles.deadlineOr}>
+                      Add days past 120 (optional — type total days below instead)
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="extra days after 120 (e.g. 30 → 150 total)"
+                      placeholderTextColor="#9c8a8a"
+                      keyboardType="number-pad"
+                      value={extraBeyond120 > 0 ? String(extraBeyond120) : ''}
+                      onChangeText={(text) => {
+                        if (text === '') {
+                          setExtraBeyond120(0);
+                          return;
+                        }
+                        const n = parseInt(text.replace(/[^0-9]/g, ''), 10);
+                        if (Number.isNaN(n)) return;
+                        setExtraBeyond120(Math.min(MAX_EXTRA_DAYS, Math.max(0, n)));
+                      }}
+                      onFocus={handleFocusAddInputs}
+                    />
+                  </View>
+                ) : null}
+                <Text style={styles.deadlineOr}>or type total days (any length)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 14 or 200"
+                  placeholderTextColor="#9c8a8a"
+                  keyboardType="number-pad"
+                  value={effectiveDays > 0 ? String(effectiveDays) : ''}
+                  onChangeText={setTotalDaysFromInput}
+                  onFocus={handleFocusAddInputs}
+                />
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="sub-goals (comma separated)"
+                placeholderTextColor="#9c8a8a"
+                value={subGoalInput}
+                onChangeText={setSubGoalInput}
+                onFocus={handleFocusAddInputs}
+              />
+
+              <Pressable onPress={handleAddGoal} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>set goal!</Text>
               </Pressable>
             </View>
-
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>goal name:</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="xxxxxxxxxxxxxxx"
-                placeholderTextColor="#6a5858"
-                value={goalNameInput}
-                onChangeText={setGoalNameInput}
-              />
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.inputLabel}>add deadline?</Text>
-              <Pressable
-                style={[styles.toggleDot, addDeadline && styles.toggleDotActive]}
-                onPress={() => setAddDeadline((v) => !v)}
-              />
-            </View>
-            {addDeadline ? (
-              <TextInput
-                style={styles.formInput}
-                placeholder="deadline:[00-00-0000]"
-                placeholderTextColor="#6a5858"
-                value={deadlineInput}
-                onChangeText={setDeadlineInput}
-              />
-            ) : null}
-
-            <View>
-              <View style={styles.toggleRow}>
-                <Text style={styles.inputLabel}>add sub-goal?</Text>
-                <Pressable
-                  style={[styles.toggleDot, addSubGoals[0] && styles.toggleDotActive]}
-                  onPress={() => toggleSubGoal(0)}
-                />
-              </View>
-              {addSubGoals[0] ? (
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="sub-goal name: xxxxxxx"
-                  placeholderTextColor="#6a5858"
-                  value={subGoalInputs[0]}
-                  onChangeText={(v) => setSubGoalInput(0, v)}
-                />
-              ) : null}
-            </View>
-
-            {addSubGoals[0] ? (
-              <View>
-                <View style={styles.toggleRow}>
-                  <Text style={styles.inputLabel}>add sub-goal?</Text>
-                  <Pressable
-                    style={[styles.toggleDot, addSubGoals[1] && styles.toggleDotActive]}
-                    onPress={() => toggleSubGoal(1)}
-                  />
-                </View>
-                {addSubGoals[1] ? (
-                  <TextInput
-                    style={styles.formInput}
-                    placeholder="sub-goal name: xxxxxxx"
-                    placeholderTextColor="#6a5858"
-                    value={subGoalInputs[1]}
-                    onChangeText={(v) => setSubGoalInput(1, v)}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-
-            {addSubGoals[1] ? (
-              <View>
-                <View style={styles.toggleRow}>
-                  <Text style={styles.inputLabel}>add sub-goal?</Text>
-                  <Pressable
-                    style={[styles.toggleDot, addSubGoals[2] && styles.toggleDotActive]}
-                    onPress={() => toggleSubGoal(2)}
-                  />
-                </View>
-                {addSubGoals[2] ? (
-                  <TextInput
-                    style={styles.formInput}
-                    placeholder="sub-goal name: xxxxxxx"
-                    placeholderTextColor="#6a5858"
-                    value={subGoalInputs[2]}
-                    onChangeText={(v) => setSubGoalInput(2, v)}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-
-            <Pressable style={styles.setGoalBtn} onPress={handleSetGoal}>
-              <Text style={styles.setGoalText}>set goal!</Text>
+          ) : (
+            <Pressable onPress={() => setIsAddOpen(true)} style={styles.addGoalButton}>
+              <Ionicons name="add" size={20} color="#5e4747" />
+              <Text style={styles.addGoalButtonText}>add goal</Text>
             </Pressable>
-          </View>
-        ) : null}
-
-        {goals.map((goal) => (
-          <View key={goal.id} style={styles.goalWrap}>
-            <View style={styles.goalCard}>
-              <View style={styles.goalContentRow}>
-                <View style={styles.goalTextWrap}>
-                  <Text style={styles.goalTitle}>{goal.title}</Text>
-                  <Text style={styles.goalDeadline}>{goal.deadline}</Text>
-                </View>
-              </View>
-            </View>
-            <Pressable style={styles.deleteBtn} onPress={() => removeGoal(goal.id)}>
-              <Text style={styles.xMark}>×</Text>
-            </Pressable>
-            {goal.subGoals ? (
-              <View style={styles.subGoalsCard}>
-                {goal.subGoals.map((sg, idx) => (
-                  <View key={`${goal.id}-${sg}-${idx}`} style={styles.subGoalRow}>
-                    <Text style={styles.subGoalText}>{sg}</Text>
-                    <Pressable style={styles.subDeleteBtn} onPress={() => removeSubGoal(goal.id, idx)}>
-                      <Text style={styles.subXMark}>×</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        ))}
-
-        <View style={styles.addRow}>
-          <Pressable style={styles.addIconBtn} onPress={() => setShowAddGoal(true)}>
-            <Text style={styles.addIcon}>+</Text>
-          </Pressable>
-          <Pressable onPress={() => setShowAddGoal(true)}>
-            <Text style={styles.addText}>add goal</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </ImageBackground>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#e9e1e2',
+    backgroundColor: '#f2e4e4',
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  foreground: {
+    flex: 1,
+    paddingHorizontal: 14,
+  },
+  headerRow: {
+    paddingHorizontal: 8,
+    marginBottom: 8,
+  },
+  pageTitle: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(44, 32, 50),
+    color: DARK,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: responsive(10, 8, 16),
-    paddingTop: 64,
-    paddingBottom: 96,
-  },
-  profileRow: {
-    flexDirection: 'row',
+    paddingBottom: 28,
     gap: 10,
-    marginBottom: 14,
   },
-  catImageWrap: {
-    width: responsive(206, 150, 230),
-    height: responsive(198, 138, 220),
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1.6,
-    borderColor: '#ab9393',
-    backgroundColor: '#e8d4d5',
-  },
-  catImage: {
-    width: '100%',
-    height: '100%',
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#e8d4d5',
+  profileCard: {
     borderRadius: 10,
-    borderWidth: 1.6,
-    borderColor: '#ab9393',
+    borderWidth: 1,
+    borderColor: '#bca5a5',
+    backgroundColor: '#f5f0df',
+    padding: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  catWindowColumn: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  profileTextBlock: {
+    flex: 1,
+    backgroundColor: '#f8eaea',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d7bfbf',
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
-  infoLabel: {
+  profileText: {
     fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-    marginTop: 2,
-  },
-  infoValue: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-    opacity: 0.9,
+    fontSize: responsive(20, 15, 24),
+    color: '#786161',
     marginBottom: 2,
   },
-  goalWrap: {
-    marginBottom: 12,
-  },
   goalCard: {
-    backgroundColor: '#e8d4d5',
     borderRadius: 10,
-    borderWidth: 1.6,
-    borderColor: '#ab9393',
-    minHeight: responsive(60, 48, 74),
-    justifyContent: 'center',
-    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#c2a7a7',
+    backgroundColor: '#f6e3e3',
+    paddingHorizontal: 10,
     paddingVertical: 10,
-    marginRight: 56,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    elevation: 3,
   },
-  goalContentRow: {
+  goalCardDone: {
+    opacity: 0.85,
+    backgroundColor: '#e8dede',
+  },
+  goalCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
   },
-  goalTextWrap: {
+  completeRow: {
     flex: 1,
-    paddingRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#9f7f7f',
+    backgroundColor: '#fff8f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#7a9f6a',
+    borderColor: '#5f7a52',
   },
   goalTitle: {
+    flex: 1,
     fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
+    fontSize: responsive(24, 18, 28),
+    color: DARK,
+  },
+  goalTitleDone: {
+    textDecorationLine: 'line-through',
+    color: '#8a7575',
+  },
+  goalMetaDone: {
+    color: '#8a7575',
+  },
+  deleteButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#ead5d5',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   goalDeadline: {
     fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-    opacity: 0.9,
+    fontSize: responsive(18, 14, 22),
+    color: '#755f5f',
+    marginTop: 2,
   },
-  deleteBtn: {
-    position: 'absolute',
-    right: 6,
-    top: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#d7b5b7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subGoalsCard: {
-    marginTop: -2,
-    marginLeft: 34,
-    marginRight: 56,
-    backgroundColor: '#F7F0E0',
-    borderRadius: 0,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    borderWidth: 1.6,
-    borderColor: '#ab9393',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 7,
+  subGoalsWrap: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#d7c3c3',
+    paddingTop: 6,
+    gap: 6,
   },
   subGoalRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  subGoalText: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-  },
-  subDeleteBtn: {
+  subCheckbox: {
     width: 18,
     height: 18,
-    borderRadius: 9,
-    backgroundColor: '#d7b5b7',
-    marginRight: 6,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#9f7f7f',
+    backgroundColor: '#fff8f8',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
-  xMark: {
+  subCheckboxChecked: {
+    backgroundColor: '#7a9f6a',
+    borderColor: '#5f7a52',
+  },
+  subGoalText: {
+    flex: 1,
     fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(26, 20, 30),
-    color: TEXT_COLOR,
-    lineHeight: responsive(26, 20, 30),
-    marginTop: -1,
+    fontSize: responsive(17, 13, 20),
+    color: '#5f4c4c',
   },
-  subXMark: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(16, 13, 20),
-    color: TEXT_COLOR,
-    lineHeight: responsive(16, 13, 20),
-    marginTop: -1,
+  subGoalDone: {
+    textDecorationLine: 'line-through',
+    color: '#8a7a7a',
   },
-  addRow: {
+  addSheet: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cdbbb0',
+    backgroundColor: '#f6f2e2',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  addHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 10,
-    marginLeft: 4,
   },
-  addIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 2,
-    backgroundColor: '#e8d4d5',
-    borderWidth: 1.6,
-    borderColor: '#b8a2a2',
-    alignItems: 'center',
-    justifyContent: 'center',
+  addTitle: {
+    flex: 1,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(40, 28, 44),
+    color: DARK,
+  },
+  input: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7c5c5',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 26),
+    color: DARK,
+  },
+  deadlineBlock: {
+    gap: 6,
+  },
+  deadlineLabel: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 26),
+    color: DARK,
+  },
+  deadlineSummary: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 14, 22),
+    color: '#6b5555',
+  },
+  deadlineSlider: {
+    width: '100%',
+    height: 36,
+  },
+  deadlineSliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  deadlineHint: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(14, 12, 16),
+    color: '#9a8585',
+  },
+  deadlineOr: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 13, 18),
+    color: '#7d6666',
+    marginTop: 4,
+  },
+  extraDaysBlock: {
+    gap: 6,
+  },
+  primaryButton: {
+    alignSelf: 'center',
+    marginTop: 4,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 3,
-    elevation: 3,
-  },
-  addIcon: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(34, 28, 40),
-    color: TEXT_COLOR,
-    lineHeight: responsive(34, 28, 40),
-  },
-  addText: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(40, 28, 46),
-    color: TEXT_COLOR,
-  },
-  addGoalPanel: {
-    backgroundColor: '#e9e4d3',
-    borderRadius: 10,
-    borderWidth: 1.6,
-    borderColor: '#d2c8aa',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 18,
-    marginBottom: 14,
-  },
-  addGoalPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  addGoalPanelTitle: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(40, 28, 46),
-    color: TEXT_COLOR,
-  },
-  inputRow: {
-    marginBottom: 8,
-  },
-  inputLabel: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-    marginBottom: 4,
-  },
-  formInput: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1.4,
-    borderColor: '#cdbfb2',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
     elevation: 2,
   },
-  toggleRow: {
+  primaryButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(40, 28, 44),
+    color: DARK,
+  },
+  addGoalButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  toggleDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#f3f3f3',
+    gap: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#f0dcdc',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#c9c9c9',
+    borderColor: '#d8bcbc',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  toggleDotActive: {
-    backgroundColor: '#111',
-  },
-  setGoalBtn: {
-    alignSelf: 'center',
-    marginTop: 8,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  setGoalText: {
+  addGoalButtonText: {
     fontFamily: 'Gaegu-Bold',
-    fontSize: UNIFORM_TEXT_SIZE,
-    color: TEXT_COLOR,
+    fontSize: responsive(32, 22, 36),
+    color: DARK,
   },
 });
