@@ -17,8 +17,6 @@ import * as ImagePicker from 'expo-image-picker';
 import  {useUser} from '@/context/UserContext';
 import {supabase} from "@/lib/supabaseClient";
 
-console.log("supabase client:", supabase);//import supabase debug
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
 
@@ -29,6 +27,69 @@ const CRAFT_TYPES = ['test','knitting', 'crochet', 'embroidery', 'weaving', 'sew
 const PINK = '#c49a9a';
 const CREAM = '#f5f0e8';
 const DARK = '#5c3d3d';
+const STORAGE_BUCKET_CANDIDATES = [
+  process.env.EXPO_PUBLIC_SUPABASE_POSTS_BUCKET,
+  'images',
+  'post-media',
+].filter(Boolean);
+
+const fileExtensionFromUri = (uri) => {
+  const clean = String(uri || '').split('?')[0].split('#')[0];
+  const maybeExt = clean.includes('.') ? clean.slice(clean.lastIndexOf('.') + 1).toLowerCase() : '';
+  return maybeExt && maybeExt.length <= 5 ? maybeExt : 'jpg';
+};
+
+const base64ToUint8Array = (base64) => {
+  const binary = globalThis.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+async function uploadPostImageToStorage({ uri, base64, userId }) {
+  if (!uri && !base64) throw new Error('Image data is missing.');
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const ext = fileExtensionFromUri(uri);
+  const filePath = `${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+
+  const uploadBody = base64
+    ? base64ToUint8Array(base64)
+    : await (async () => {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        if (!blob || typeof blob.size !== 'number' || blob.size <= 0) {
+          throw new Error('Selected image appears empty. Please choose a different image.');
+        }
+        return blob;
+      })();
+
+  if (!uploadBody || (uploadBody.byteLength != null && uploadBody.byteLength <= 0) || (uploadBody.size != null && uploadBody.size <= 0)) {
+    throw new Error('Selected image appears empty. Please choose a different image.');
+  }
+
+  let lastError = null;
+  for (const bucket of STORAGE_BUCKET_CANDIDATES) {
+    const { error } = await supabase.storage.from(bucket).upload(filePath, uploadBody, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: base64 ? `image/${ext}` : uploadBody.type || `image/${ext}`,
+    });
+
+    if (!error) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+      if (data?.publicUrl?.startsWith('http://') || data?.publicUrl?.startsWith('https://')) {
+        return data.publicUrl;
+      }
+    } else {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Image upload failed.');
+}
 
 export default function CreatePostScreen() {
   const {user} = useUser();
@@ -40,6 +101,7 @@ export default function CreatePostScreen() {
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [selectedImageUri, setSelectedImageUri] = useState(null);
+  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
 
   const addTag = () => {
     const trimmed = tagInput.trim();
@@ -62,10 +124,12 @@ export default function CreatePostScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
       allowsEditing: true,
+      base64: true,
     });
 
     if (!result.canceled && result.assets?.length) {
       setSelectedImageUri(result.assets[0].uri);
+      setSelectedImageBase64(result.assets[0].base64 || null);
     }
   };
 
@@ -75,55 +139,65 @@ export default function CreatePostScreen() {
       return;
     }
 
-    if (!supabase) {
-      console.log("Supabase is not configured.");
+    if (!user?.id) {
+      Alert.alert('Please sign in to post.');
       return;
     }
 
-    console.log('share pressed'); //quick share debug
-    //alert('share pressed');
-    console.log(user.user_id)
+    if (!supabase) {
+      Alert.alert('Supabase is not configured.');
+      return;
+    }
 
+    try {
+      const content = JSON.stringify({
+        title: title.trim(),
+        caption: caption.trim(),
+        craftType: craftType === 'other' ? customCraftType.trim() : craftType,
+        tags,
+      });
 
-    //inserting new content here
-    const content = JSON.stringify({
-      title: title.trim(),
-      caption: caption.trim(),
-      craftType: craftType,
-      tags,
-    });
+      const uploadedUrl = await uploadPostImageToStorage({
+        uri: selectedImageUri,
+        base64: selectedImageBase64,
+        userId: user.id,
+      });
 
-    //inserting into post here
-    const { data: post, error: postError } = await supabase
-        .from('posts')
-        .insert([
-          {
-            creator_id: user.id,
-            content,
-          },
-        ])
-        .select()
-        .single();
+      if (!uploadedUrl || uploadedUrl.startsWith('blob:') || uploadedUrl.startsWith('file://')) {
+        throw new Error('Image upload failed. Please try another photo.');
+      }
 
-    if (postError) throw postError;
+      const { data: post, error: postError } = await supabase
+          .from('posts')
+          .insert([
+            {
+              creator_id: user.id,
+              content,
+            },
+          ])
+          .select()
+          .single();
 
-    if (selectedImageUri) {
+      if (postError) throw postError;
+
       const { error: mediaError } = await supabase
           .from('post_media')
           .insert([
             {
               post_id: post.post_id,
-              media_url: selectedImageUri,
+              media_url: uploadedUrl,
               media_type: 'image',
               order: 0,
             },
           ]);
 
       if (mediaError) throw mediaError;
-    }
 
-    alert('Post shared!');
-    router.back();
+      Alert.alert('Posted!');
+      router.back();
+    } catch (error) {
+      Alert.alert('Unable to post', error?.message || 'Please try again.');
+    }
 
   };
 

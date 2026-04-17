@@ -1,18 +1,28 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 function mapJoinedUser(item, joinedUser, fallbackUserId) {
     return {
         user_id: joinedUser?.user_id || fallbackUserId,
+        username: joinedUser?.username || '',
+        display_name: joinedUser?.display_name || '',
         first_name: joinedUser?.first_name || '',
         last_name: joinedUser?.last_name || '',
         bio: joinedUser?.bio || '',
+        avatar_url: joinedUser?.avatar_url || '',
+        level: joinedUser?.level ?? null,
+        email: joinedUser?.email || '',
         created_at: item.created_at,
     };
 }
 
+export function getUserName(person) {
+    const userName = `${person?.username || ''}`.trim();
+    return userName || 'Crafter';
+}
+
 export function getDisplayName(person) {
-    const fullName = `${person?.first_name || ''} ${person?.last_name || ''}`.trim();
-    return fullName || 'Crafter';
+    const displayName = `${person?.display_name || ''}`.trim();
+    return displayName || 'Crafter';
 }
 
 export async function getFollowersCount(userId) {
@@ -43,10 +53,14 @@ export async function getFollowersList(userId) {
       created_at,
       users!follows_follower_id_fkey (
         user_id,
+        username,
+        display_name,
         first_name,
         last_name,
-        bio
-      )
+        bio,
+        avatar_url,
+        level
+        )
     `)
         .eq('followed_id', userId)
         .order('created_at', { ascending: false });
@@ -66,10 +80,14 @@ export async function getFollowingList(userId) {
       created_at,
       users!follows_followed_id_fkey (
         user_id,
+        username,
+        display_name,
         first_name,
         last_name,
-        bio
-      )
+        bio,
+        avatar_url,
+        level
+        )
     `)
         .eq('follower_id', userId)
         .order('created_at', { ascending: false });
@@ -138,7 +156,17 @@ export async function removeFollower(currentUserId, followerUserId) {
 export async function getUserProfile(userId) {
     const { data, error } = await supabase
         .from('users')
-        .select('user_id, first_name, last_name, bio')
+        .select(`
+            user_id,
+            username,
+            display_name,
+            first_name,
+            last_name,
+            bio,
+            avatar_url,
+            level,
+            email
+        `)
         .eq('user_id', userId)
         .maybeSingle();
 

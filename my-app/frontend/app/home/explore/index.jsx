@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -11,10 +11,10 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-import { EXPLORE_ITEMS } from '@/constants/exploreItems';
+import { fetchExploreItems } from '@/constants/exploreItems';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -38,12 +38,25 @@ const COLUMN_GAP = responsive(8, 6, 12);
 const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
 
 function CraftCard({ item }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
   return (
     <Pressable
       onPress={() => router.push(`/home/explore/${item.id}`)}
       style={({ pressed }) => [pressed && styles.cardPressed]}>
       <View>
-        <View style={styles.cardImagePlaceholder} />
+        {item.imageUrl && !imageFailed ? (
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={styles.cardImagePlaceholder}
+            resizeMode="cover"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <View style={styles.cardImagePlaceholder}>
+            <Text style={styles.missingImageText}>image unavailable</Text>
+          </View>
+        )}
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.craftType}>{item.craftType}</Text>
       </View>
@@ -53,10 +66,32 @@ function CraftCard({ item }) {
 
 export default function ExploreScreen() {
   const [query, setQuery] = useState('');
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const next = await fetchExploreItems();
+      setItems(next);
+    } catch (error) {
+      setLoadError(error?.message || 'Failed to load posts.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [loadItems])
+  );
 
   const filtered = useMemo(
-    () => EXPLORE_ITEMS.filter((item) => itemMatchesQuery(item, query)),
-    [query]
+    () => items.filter((item) => itemMatchesQuery(item, query)),
+    [items, query]
   );
 
   const leftCol = filtered.filter((_, i) => i % 2 === 0);
@@ -86,10 +121,20 @@ export default function ExploreScreen() {
               </View>
             </View>
 
-            {filtered.length === 0 ? (
+            {loading ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>Loading posts...</Text>
+              </View>
+            ) : loadError ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>{loadError}</Text>
+              </View>
+            ) : filtered.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Text style={styles.emptyText}>
-                  No crafts match &quot;{query.trim()}&quot;. Try another word.
+                  {query.trim()
+                    ? `No crafts match "${query.trim()}". Try another word.`
+                    : 'No posts yet.'}
                 </Text>
               </View>
             ) : (
@@ -209,9 +254,16 @@ const styles = StyleSheet.create({
   cardImagePlaceholder: {
     width: COL_WIDTH,
     height: COL_WIDTH * 0.85,
-    backgroundColor: '#000000',
+    backgroundColor: '#e9ddd3',
     borderRadius: responsive(12, 10, 14),
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  missingImageText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(14, 12, 16),
+    color: '#8d6f6f',
   },
   cardTitle: {
     fontFamily: 'Gaegu-Bold',

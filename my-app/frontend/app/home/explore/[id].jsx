@@ -15,7 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { getExploreItem } from '@/constants/exploreItems';
+import { fetchExploreItemById } from '@/constants/exploreItems';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -36,14 +36,45 @@ export default function ExplorePhotoScreen() {
   const [comment, setComment] = useState('');
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
-
-  const item = getExploreItem(id);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [item, setItem] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    if (id != null && !item) router.back();
-  }, [id, item]);
+    let active = true;
 
-  if (!item) return null;
+    async function loadItem() {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError('');
+      try {
+        const next = await fetchExploreItemById(String(id));
+        if (!active) return;
+        if (!next) {
+          router.back();
+          return;
+        }
+        setItem(next);
+      } catch (error) {
+        if (!active) return;
+        setLoadError(error?.message || 'Unable to load this post.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadItem();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  if (loading || !item) return null;
 
   const photoWidth = SCREEN_WIDTH - H_PAD * 2;
   const photoHeight = photoWidth * 0.92;
@@ -53,7 +84,7 @@ export default function ExplorePhotoScreen() {
   const poster    = item.poster    ?? '@poster';
   const title     = item.title     ?? 'title here';
   const caption   = item.caption   ?? '';
-  const tags      = item.tags      ?? ['tag1', 'tag2', 'etc. tags'];
+  const tags      = Array.isArray(item.tags) && item.tags.length ? item.tags : ['tag1', 'tag2', 'etc. tags'];
 
   return (
     <View style={styles.root}>
@@ -90,7 +121,18 @@ export default function ExplorePhotoScreen() {
 
               {/* Photo */}
               <View style={[styles.photoFrame, { width: photoWidth }]}>
-                <View style={[styles.photo, { width: photoWidth, height: photoHeight }]} />
+                {item.imageUrl && !imageFailed ? (
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={[styles.photo, { width: photoWidth, height: photoHeight }]}
+                    resizeMode="cover"
+                    onError={() => setImageFailed(true)}
+                  />
+                ) : (
+                  <View style={[styles.photo, styles.photoFallback, { width: photoWidth, height: photoHeight }]}>
+                    <Text style={styles.photoFallbackText}>image unavailable</Text>
+                  </View>
+                )}
               </View>
 
               {/* Like / bookmark bar */}
@@ -113,6 +155,7 @@ export default function ExplorePhotoScreen() {
 
               {/* Craft caption + tags + comments */}
               <View style={[styles.textBlock, { width: photoWidth }]}>
+                {loadError ? <Text style={styles.captionSecondary}>{loadError}</Text> : null}
                 <Text style={styles.caption}>{craftType}</Text>
                 {caption ? <Text style={styles.captionSecondary}>{caption}</Text> : null}
 
@@ -218,7 +261,16 @@ const styles = StyleSheet.create({
   },
   photo: {
     borderRadius: responsive(12, 10, 14),
-    backgroundColor: '#000000',
+    backgroundColor: '#e9ddd3',
+  },
+  photoFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoFallbackText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 14, 20),
+    color: '#8d6f6f',
   },
 
   // Action bar
