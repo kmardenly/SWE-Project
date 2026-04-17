@@ -3,14 +3,16 @@ import { StyleSheet } from 'react-native';
 export const homeStyles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'column',
-    backgroundColor: '#FFFFFF',
-    //justifyContent: 'center',
-    //alignItems: 'left',
- //   alignItems: 'flex-stretch',
-    alignItems: 'stretch',
+    backgroundColor: '#f2e4e4',
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  foreground: {
+    flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 24
   },
   header:{
     flexDirection: 'row',

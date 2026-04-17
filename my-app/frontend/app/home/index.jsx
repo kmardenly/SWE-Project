@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {homeStyles} from '../../constants/homeStyles';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,12 +51,18 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={[homeStyles.container, { paddingTop: insets.top + 12 }]}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled">
+    <View style={homeStyles.container}>
+      <Image
+        source={require('@/assets/images/explore_background.png')}
+        resizeMode="cover"
+        style={homeStyles.backgroundLayer}
+      />
+      <View style={[homeStyles.foreground, { paddingTop: insets.top + 12 }]}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
         <View style={homeStyles.header}>
           <Text style={homeStyles.title}>My Craft</Text>
           <View style={homeStyles.headerRight}>
@@ -111,7 +117,8 @@ export default function HomeScreen() {
         {MOCK_POSTS.map(post => (
           <PostCard key={post.id} post={post} />
         ))}
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       <NotificationModal
         visible={notifVisible}
