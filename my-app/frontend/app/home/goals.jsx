@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,8 +11,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import CatWindow from '@/components/cat-widget';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -18,38 +23,109 @@ const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 const DARK = '#5c3d3d';
 
+const MAX_SLIDER_DAYS = 120;
+const MAX_EXTRA_DAYS = 2000;
+
+function addDaysToToday(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + Math.max(0, Math.floor(days)));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Display as MM.DD.YY (e.g. 08.15.26). Keeps ISO YYYY-MM-DD internally. */
+function formatDateDot(isoDate) {
+  if (!isoDate || isoDate === 'no deadline') {
+    return isoDate === 'no deadline' ? 'no deadline' : '--';
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate).trim());
+  if (!m) return String(isoDate);
+  const [, y, mo, day] = m;
+  return `${mo}.${day}.${y.slice(2)}`;
+}
+
+function normalizeSubGoal(item) {
+  if (typeof item === 'string') return { text: item, completed: false };
+  return {
+    text: item?.text ?? '',
+    completed: Boolean(item?.completed),
+  };
+}
+
+function getEffectiveDeadlineDays(sliderVal, extraBeyond120) {
+  if (sliderVal <= 0) return 0;
+  if (sliderVal < MAX_SLIDER_DAYS) return sliderVal;
+  return Math.min(MAX_SLIDER_DAYS + Math.max(0, extraBeyond120), MAX_SLIDER_DAYS + MAX_EXTRA_DAYS);
+}
+
 const INITIAL_GOALS = [
   {
     id: 'g1',
     title: 'Finish kitten tote',
     deadline: '2026-05-10',
-    subGoals: ['Cut fabric', 'Sew sides', 'Attach straps'],
+    subGoals: [
+      { text: 'Cut fabric', completed: false },
+      { text: 'Sew sides', completed: false },
+      { text: 'Attach straps', completed: false },
+    ],
+    completed: false,
+    completedAt: null,
   },
   {
     id: 'g2',
     title: 'Paint shelf',
     deadline: '2026-05-22',
-    subGoals: ['Sand edges', 'Prime coat'],
+    subGoals: [
+      { text: 'Sand edges', completed: false },
+      { text: 'Prime coat', completed: false },
+    ],
+    completed: false,
+    completedAt: null,
   },
 ];
 
-function GoalCard({ goal, onDelete }) {
+function GoalCard({ goal, onDelete, onToggleComplete, onToggleSubGoal }) {
+  const done = Boolean(goal.completed);
+  const subGoals = (goal.subGoals ?? []).map(normalizeSubGoal);
   return (
-    <View style={styles.goalCard}>
+    <View style={[styles.goalCard, done && styles.goalCardDone]}>
       <View style={styles.goalCardHeader}>
-        <Text style={styles.goalTitle}>{goal.title}</Text>
+        <Pressable
+          onPress={() => onToggleComplete(goal.id)}
+          style={styles.completeRow}
+          hitSlop={4}>
+          <View style={[styles.checkbox, done && styles.checkboxChecked]}>
+            {done ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          </View>
+          <Text style={[styles.goalTitle, done && styles.goalTitleDone]} numberOfLines={2}>
+            {goal.title}
+          </Text>
+        </Pressable>
         <Pressable onPress={() => onDelete(goal.id)} hitSlop={8} style={styles.deleteButton}>
           <Ionicons name="close" size={16} color="#7d6666" />
         </Pressable>
       </View>
-      <Text style={styles.goalDeadline}>deadline {goal.deadline}</Text>
+      <Text style={[styles.goalDeadline, done && styles.goalMetaDone]}>
+        deadline {formatDateDot(goal.deadline)}
+        {done && goal.completedAt ? ` · done ${formatDateDot(goal.completedAt)}` : ''}
+      </Text>
 
-      {goal.subGoals?.length ? (
+      {subGoals.length ? (
         <View style={styles.subGoalsWrap}>
-          {goal.subGoals.map((subGoal, index) => (
-            <Text key={`${goal.id}-${index}`} style={styles.subGoalText}>
-              {`sub-goal ${index + 1}: ${subGoal}`}
-            </Text>
+          {subGoals.map((subGoal, index) => (
+            <Pressable
+              key={`${goal.id}-sub-${index}`}
+              onPress={() => onToggleSubGoal(goal.id, index)}
+              style={styles.subGoalRow}
+              hitSlop={4}>
+              <View style={[styles.subCheckbox, subGoal.completed && styles.subCheckboxChecked]}>
+                {subGoal.completed ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+              </View>
+              <Text
+                style={[styles.subGoalText, subGoal.completed && styles.subGoalDone]}
+                numberOfLines={3}>
+                {`sub-goal ${index + 1}: ${subGoal.text}`}
+              </Text>
+            </Pressable>
           ))}
         </View>
       ) : null}
@@ -59,12 +135,17 @@ function GoalCard({ goal, onDelete }) {
 
 export default function GoalsScreen() {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef(null);
   const [goals, setGoals] = useState(INITIAL_GOALS);
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [goalName, setGoalName] = useState('');
-  const [goalDeadline, setGoalDeadline] = useState('');
+  /** Slider 0 = none; 1–119 = days; 120 = 120+ (use extraBeyond120) */
+  const [deadlineSlider, setDeadlineSlider] = useState(0);
+  const [extraBeyond120, setExtraBeyond120] = useState(0);
   const [subGoalInput, setSubGoalInput] = useState('');
+
+  const effectiveDays = getEffectiveDeadlineDays(deadlineSlider, extraBeyond120);
 
   const handleAddGoal = () => {
     const trimmedName = goalName.trim();
@@ -73,26 +154,96 @@ export default function GoalsScreen() {
     const subGoals = subGoalInput
       .split(',')
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((text) => ({ text, completed: false }));
+
+    const deadlineLabel =
+      effectiveDays <= 0 ? 'no deadline' : addDaysToToday(effectiveDays);
 
     setGoals((prev) => [
       ...prev,
       {
         id: `g-${Date.now()}`,
         title: trimmedName,
-        deadline: goalDeadline.trim() || 'no deadline',
+        deadline: deadlineLabel,
         subGoals,
+        completed: false,
+        completedAt: null,
       },
     ]);
 
     setGoalName('');
-    setGoalDeadline('');
+    setDeadlineSlider(0);
+    setExtraBeyond120(0);
     setSubGoalInput('');
     setIsAddOpen(false);
   };
 
   const handleDeleteGoal = (goalId) => {
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
+  };
+
+  const handleToggleComplete = (goalId) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        const nextCompleted = !goal.completed;
+        return {
+          ...goal,
+          completed: nextCompleted,
+          completedAt: nextCompleted ? today : null,
+        };
+      })
+    );
+  };
+
+  const handleToggleSubGoal = (goalId, subIndex) => {
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        const subs = (goal.subGoals ?? []).map(normalizeSubGoal);
+        if (!subs[subIndex]) return goal;
+        const next = subs.map((s, i) =>
+          i === subIndex ? { ...s, completed: !s.completed } : s
+        );
+        return { ...goal, subGoals: next };
+      })
+    );
+  };
+
+  const setTotalDaysFromInput = (text) => {
+    if (text === '' || text.trim() === '') {
+      setDeadlineSlider(0);
+      setExtraBeyond120(0);
+      return;
+    }
+    const n = parseInt(String(text).replace(/[^0-9]/g, ''), 10);
+    if (Number.isNaN(n) || n < 0) return;
+    const capped = Math.min(n, MAX_SLIDER_DAYS + MAX_EXTRA_DAYS);
+    if (capped <= 0) {
+      setDeadlineSlider(0);
+      setExtraBeyond120(0);
+      return;
+    }
+    if (capped < MAX_SLIDER_DAYS) {
+      setDeadlineSlider(capped);
+      setExtraBeyond120(0);
+      return;
+    }
+    setDeadlineSlider(MAX_SLIDER_DAYS);
+    setExtraBeyond120(capped - MAX_SLIDER_DAYS);
+  };
+
+  const completedCount = goals.filter((g) => g.completed).length;
+  const lastCompletedDate = goals
+    .filter((g) => g.completed && g.completedAt)
+    .reduce((latest, g) => (!latest || g.completedAt > latest ? g.completedAt : latest), null);
+
+  const handleFocusAddInputs = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
   };
 
   return (
@@ -102,28 +253,41 @@ export default function GoalsScreen() {
         resizeMode="cover"
         style={styles.backgroundLayer}
       />
-      <View style={[styles.foreground, { paddingTop: insets.top + 8 }]}>
+      <KeyboardAvoidingView
+        style={[styles.foreground, { paddingTop: insets.top + 8 }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.headerRow}>
           <Text style={styles.pageTitle}>My Goals</Text>
         </View>
 
         <ScrollView
+          ref={scrollRef}
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           <View style={styles.profileCard}>
-            <View style={styles.previewImage} />
+            <View style={styles.catWindowColumn}>
+              <CatWindow mood="happy" />
+            </View>
             <View style={styles.profileTextBlock}>
               <Text style={styles.profileText}>name: your craft cat</Text>
               <Text style={styles.profileText}>level: 1</Text>
-              <Text style={styles.profileText}>goals achieved: {goals.length}</Text>
-              <Text style={styles.profileText}>last goal completed: --</Text>
+              <Text style={styles.profileText}>goals achieved: {completedCount}</Text>
+              <Text style={styles.profileText}>
+                last goal completed: {lastCompletedDate ? formatDateDot(lastCompletedDate) : '--'}
+              </Text>
             </View>
           </View>
 
           {goals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} onDelete={handleDeleteGoal} />
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              onDelete={handleDeleteGoal}
+              onToggleComplete={handleToggleComplete}
+              onToggleSubGoal={handleToggleSubGoal}
+            />
           ))}
 
           {isAddOpen ? (
@@ -141,20 +305,82 @@ export default function GoalsScreen() {
                 placeholderTextColor="#9c8a8a"
                 value={goalName}
                 onChangeText={setGoalName}
+                onFocus={handleFocusAddInputs}
               />
-              <TextInput
-                style={styles.input}
-                placeholder="deadline (YYYY-MM-DD)"
-                placeholderTextColor="#9c8a8a"
-                value={goalDeadline}
-                onChangeText={setGoalDeadline}
-              />
+              <View style={styles.deadlineBlock}>
+                <Text style={styles.deadlineLabel}>deadline</Text>
+                <Text style={styles.deadlineSummary}>
+                  {effectiveDays <= 0
+                    ? 'No deadline'
+                    : deadlineSlider === MAX_SLIDER_DAYS && extraBeyond120 > 0
+                      ? `In ${effectiveDays} days (120+) · ${formatDateDot(
+                          addDaysToToday(effectiveDays)
+                        )}`
+                      : `In ${effectiveDays} day${effectiveDays === 1 ? '' : 's'} · ${formatDateDot(
+                          addDaysToToday(effectiveDays)
+                        )}`}
+                </Text>
+                <Slider
+                  style={styles.deadlineSlider}
+                  minimumValue={0}
+                  maximumValue={MAX_SLIDER_DAYS}
+                  step={1}
+                  value={deadlineSlider}
+                  onValueChange={(v) => {
+                    const rounded = Math.round(v);
+                    setDeadlineSlider(rounded);
+                    if (rounded < MAX_SLIDER_DAYS) setExtraBeyond120(0);
+                  }}
+                  minimumTrackTintColor="#9f7f7f"
+                  maximumTrackTintColor="#e0d0d0"
+                  thumbTintColor="#5c3d3d"
+                />
+                <View style={styles.deadlineSliderLabels}>
+                  <Text style={styles.deadlineHint}>none</Text>
+                  <Text style={styles.deadlineHint}>120+</Text>
+                </View>
+                {deadlineSlider === MAX_SLIDER_DAYS ? (
+                  <View style={styles.extraDaysBlock}>
+                    <Text style={styles.deadlineOr}>
+                      Add days past 120 (optional — type total days below instead)
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="extra days after 120 (e.g. 30 → 150 total)"
+                      placeholderTextColor="#9c8a8a"
+                      keyboardType="number-pad"
+                      value={extraBeyond120 > 0 ? String(extraBeyond120) : ''}
+                      onChangeText={(text) => {
+                        if (text === '') {
+                          setExtraBeyond120(0);
+                          return;
+                        }
+                        const n = parseInt(text.replace(/[^0-9]/g, ''), 10);
+                        if (Number.isNaN(n)) return;
+                        setExtraBeyond120(Math.min(MAX_EXTRA_DAYS, Math.max(0, n)));
+                      }}
+                      onFocus={handleFocusAddInputs}
+                    />
+                  </View>
+                ) : null}
+                <Text style={styles.deadlineOr}>or type total days (any length)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 14 or 200"
+                  placeholderTextColor="#9c8a8a"
+                  keyboardType="number-pad"
+                  value={effectiveDays > 0 ? String(effectiveDays) : ''}
+                  onChangeText={setTotalDaysFromInput}
+                  onFocus={handleFocusAddInputs}
+                />
+              </View>
               <TextInput
                 style={styles.input}
                 placeholder="sub-goals (comma separated)"
                 placeholderTextColor="#9c8a8a"
                 value={subGoalInput}
                 onChangeText={setSubGoalInput}
+                onFocus={handleFocusAddInputs}
               />
 
               <Pressable onPress={handleAddGoal} style={styles.primaryButton}>
@@ -168,7 +394,7 @@ export default function GoalsScreen() {
             </Pressable>
           )}
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -212,11 +438,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  previewImage: {
-    width: 160,
-    height: 160,
-    borderRadius: 8,
-    backgroundColor: '#d2d2d2',
+  catWindowColumn: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   profileTextBlock: {
     flex: 1,
@@ -241,15 +465,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
+  goalCardDone: {
+    opacity: 0.85,
+    backgroundColor: '#e8dede',
+  },
   goalCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+  },
+  completeRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#9f7f7f',
+    backgroundColor: '#fff8f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#7a9f6a',
+    borderColor: '#5f7a52',
   },
   goalTitle: {
     flex: 1,
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(24, 18, 28),
     color: DARK,
+  },
+  goalTitleDone: {
+    textDecorationLine: 'line-through',
+    color: '#8a7575',
+  },
+  goalMetaDone: {
+    color: '#8a7575',
   },
   deleteButton: {
     width: 22,
@@ -270,12 +526,37 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#d7c3c3',
     paddingTop: 6,
-    gap: 2,
+    gap: 6,
+  },
+  subGoalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  subCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#9f7f7f',
+    backgroundColor: '#fff8f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  subCheckboxChecked: {
+    backgroundColor: '#7a9f6a',
+    borderColor: '#5f7a52',
   },
   subGoalText: {
+    flex: 1,
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(17, 13, 20),
     color: '#5f4c4c',
+  },
+  subGoalDone: {
+    textDecorationLine: 'line-through',
+    color: '#8a7a7a',
   },
   addSheet: {
     borderRadius: 12,
@@ -306,6 +587,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(22, 16, 26),
     color: DARK,
+  },
+  deadlineBlock: {
+    gap: 6,
+  },
+  deadlineLabel: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 26),
+    color: DARK,
+  },
+  deadlineSummary: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 14, 22),
+    color: '#6b5555',
+  },
+  deadlineSlider: {
+    width: '100%',
+    height: 36,
+  },
+  deadlineSliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  deadlineHint: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(14, 12, 16),
+    color: '#9a8585',
+  },
+  deadlineOr: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 13, 18),
+    color: '#7d6666',
+    marginTop: 4,
+  },
+  extraDaysBlock: {
+    gap: 6,
   },
   primaryButton: {
     alignSelf: 'center',
