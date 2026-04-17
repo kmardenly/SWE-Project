@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -15,6 +16,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { fetchGroupChat } from '@/lib/groupChats.service';
+import {
+  pickChatImageFromLibrary,
+  resolveChatImageUriForMessage,
+} from '@/lib/groupChatMedia.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -25,7 +30,8 @@ const DARK = '#5c3d3d';
 export default function GroupChatDetailsScreen() {
   const { chatId } = useLocalSearchParams();
   const [messageText, setMessageText] = useState('');
-  const [hasPendingImage, setHasPendingImage] = useState(false);
+  const [pendingImage, setPendingImage] = useState(null);
+  const [isPickingImage, setIsPickingImage] = useState(false);
   const [chat, setChat] = useState(null);
   const [sentMessages, setSentMessages] = useState([]);
 
@@ -47,24 +53,45 @@ export default function GroupChatDetailsScreen() {
 
   if (!chat) return null;
 
-  const handleAttachImage = () => {
-    setHasPendingImage(true);
+  const handleAttachImage = async () => {
+    if (isPickingImage) return;
+    setIsPickingImage(true);
+
+    try {
+      const picked = await pickChatImageFromLibrary();
+      if (picked.cancelled) {
+        if (picked.reason === 'permission_denied') {
+          Alert.alert('Photo access needed', 'Allow photo library permission to add an image.');
+        }
+        return;
+      }
+      setPendingImage(picked);
+    } finally {
+      setIsPickingImage(false);
+    }
   };
 
-  const handleSendMessage = () => {
-    if (!messageText.trim() && !hasPendingImage) return;
+  const handleSendMessage = async () => {
+    if (!messageText.trim() && !pendingImage) return;
 
-    setSentMessages((prev) => [
-      ...prev,
-      {
-        id: `local-${Date.now()}`,
-        author: 'You',
-        text: messageText.trim() || ' ',
-        image: hasPendingImage ? 'local-placeholder' : null,
-      },
-    ]);
+    const resolvedImageUri = pendingImage
+      ? await resolveChatImageUriForMessage(pendingImage)
+      : null;
+
+    setSentMessages((prev) => {
+      const next = [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          author: 'You',
+          text: messageText.trim() || ' ',
+          image: resolvedImageUri,
+        },
+      ];
+      return next;
+    });
     setMessageText('');
-    setHasPendingImage(false);
+    setPendingImage(null);
   };
 
   return (
@@ -98,23 +125,14 @@ export default function GroupChatDetailsScreen() {
               <View style={styles.messageBlock}>
                 <Text style={styles.authorText}>{message.author}</Text>
                 <Text style={styles.messageText}>{message.text}</Text>
-                {message.image ? (
-                  message.image === 'local-placeholder' ? (
-                    <View style={styles.localImagePlaceholder}>
-                      <Ionicons name="image-outline" size={20} color={DARK} />
-                      <Text style={styles.localImagePlaceholderText}>Image attached</Text>
-                    </View>
-                  ) : (
-                    <Image source={{ uri: message.image }} style={styles.messageImage} />
-                  )
-                ) : null}
+                {message.image ? <Image source={{ uri: message.image }} style={styles.messageImage} /> : null}
               </View>
             </View>
           ))}
         </ScrollView>
 
         <View style={styles.inputWrap}>
-          {hasPendingImage ? (
+          {pendingImage ? (
             <View style={styles.pendingImageBadge}>
               <Ionicons name="image-outline" size={16} color={DARK} />
               <Text style={styles.pendingImageText}>1 image ready</Text>
@@ -216,23 +234,6 @@ const styles = StyleSheet.create({
     height: responsive(148, 120, 180),
     borderRadius: 6,
     backgroundColor: '#ddd',
-  },
-  localImagePlaceholder: {
-    marginTop: 8,
-    width: responsive(148, 120, 180),
-    height: responsive(148, 120, 180),
-    borderRadius: 8,
-    backgroundColor: '#e4dada',
-    borderWidth: 1,
-    borderColor: '#ccb3b3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  localImagePlaceholderText: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(14, 12, 16),
-    color: DARK,
   },
   inputWrap: {
     marginHorizontal: 16,
