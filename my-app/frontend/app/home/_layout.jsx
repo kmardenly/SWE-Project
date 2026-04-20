@@ -60,6 +60,12 @@ export default function HomeTabsLayout() {
             href: null,
           }}
         />
+        <Tabs.Screen
+          name="edit-profile"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </View>
   );

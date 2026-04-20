@@ -1,6 +1,19 @@
 import { GROUP_CHATS, getGroupChatById } from '@/constants/groupChats';
 import { supabase } from '@/lib/supabaseClient';
 
+/** Matches Postgres uuid text form so we skip Supabase for mock ids like `big-cats`. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function normalizeRouteChatId(raw) {
+  if (raw == null) return '';
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return String(v ?? '').trim();
+}
+
+export function isUuid(value) {
+  return typeof value === 'string' && UUID_RE.test(value.trim());
+}
+
 function parseMessageContent(raw) {
   const fallback = { text: String(raw || ''), image: null };
   if (typeof raw !== 'string') return fallback;
@@ -38,9 +51,32 @@ async function getUserMap(userIds) {
   return new Map((data || []).map((row) => [row.user_id, row]));
 }
 
+async function ensureGeneralChannel(groupId) {
+  if (!supabase || !groupId) return null;
+  const { data: created, error } = await supabase
+    .from('group_channels')
+    .insert([{ group_id: groupId, name: 'general', description: '' }])
+    .select('channel_id, name, created_at')
+    .single();
+  if (!error) return created;
+
+  const { data: existing } = await supabase
+    .from('group_channels')
+    .select('channel_id, name, created_at')
+    .eq('group_id', groupId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existing) return existing;
+
+  console.warn('[groupChats] ensureGeneralChannel:', error.message);
+  return null;
+}
+
 export async function fetchGroupChats(currentUserId) {
   if (!supabase) return GROUP_CHATS;
 
+  try {
   const { data: allGroups, error: groupsError } = await supabase
     .from('groups')
     .select('group_id, name, description, updated_at')
@@ -157,18 +193,30 @@ export async function fetchGroupChats(currentUserId) {
   });
 
   return [...dbChats, ...legacyChats];
+  } catch (err) {
+    console.warn('[groupChats] fetchGroupChats failed, using local seed list:', err?.message || err);
+    return GROUP_CHATS;
+  }
 }
 
 export async function fetchGroupChat(chatId, currentUserId) {
-  if (!supabase || !chatId) return getGroupChatById(chatId);
+  const id = normalizeRouteChatId(chatId);
+  if (!id) return null;
 
+  if (!isUuid(id)) {
+    return getGroupChatById(id);
+  }
+
+  if (!supabase) return getGroupChatById(id);
+
+  try {
   const { data: group, error: groupError } = await supabase
     .from('groups')
     .select('group_id, name, description')
-    .eq('group_id', chatId)
+    .eq('group_id', id)
     .maybeSingle();
   if (groupError) throw groupError;
-  if (!group) return getGroupChatById(chatId);
+  if (!group) return null;
 
   const { data: channels, error: channelsError } = await supabase
     .from('group_channels')
@@ -176,7 +224,10 @@ export async function fetchGroupChat(chatId, currentUserId) {
     .eq('group_id', group.group_id)
     .order('created_at', { ascending: true });
   if (channelsError) throw channelsError;
-  const channel = channels?.[0];
+  let channel = channels?.[0];
+  if (!channel) {
+    channel = await ensureGeneralChannel(group.group_id);
+  }
   if (!channel) {
     return {
       id: group.group_id,
@@ -250,6 +301,10 @@ export async function fetchGroupChat(chatId, currentUserId) {
       isMuted: false,
     },
   };
+  } catch (err) {
+    console.warn('[groupChats] fetchGroupChat failed:', err?.message || err);
+    return null;
+  }
 }
 
 export async function sendGroupMessage({ channelId, userId, text, image }) {

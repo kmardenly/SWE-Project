@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUser } from '@/context/UserContext';
 import { fetchSavedPostsByUserId } from '@/constants/exploreItems';
@@ -25,6 +26,7 @@ const COLUMN_GAP = responsive(8, 6, 12);
 const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
 
 export default function SavesScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const fromRoute = Array.isArray(params.fromRoute) ? params.fromRoute[0] : params.fromRoute;
   const { user } = useUser();
@@ -73,8 +75,12 @@ export default function SavesScreen() {
         style={styles.backgroundLayer}
       />
       <View style={styles.foreground}>
-        <View style={styles.topBar}>
-          <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={10}>
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <Pressable
+            onPress={handleBackPress}
+            style={({ pressed }) => [styles.headerBack, pressed && styles.headerBackPressed]}
+            hitSlop={12}
+          >
             <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
           </Pressable>
           <Text style={styles.title}>My Saves</Text>
@@ -139,27 +145,35 @@ const styles = StyleSheet.create({
   },
   foreground: {
     flex: 1,
-    paddingTop: responsive(56, 48, 70),
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: H_PAD,
-    marginBottom: 12,
+    paddingBottom: 10,
   },
-  backButton: {
+  headerBack: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  headerBackPressed: {
+    opacity: 0.88,
   },
   topBarSpacer: {
     width: 36,
   },
   title: {
+    flex: 1,
+    textAlign: 'center',
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(34, 28, 40),
     color: DARK,

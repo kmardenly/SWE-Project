@@ -1,28 +1,21 @@
-import React, { useEffect, useState } from 'react';
-
-// IMPORTANT: this is the code snippet we need to route to the other.profile.jsx, put it anywhere that you would click
-// to reach someone's profile
-//               onPress={() =>
-//                   router.push({
-//                     pathname: '/home/other.profile',
-//                     params: { userId: item.user_id },
-//                   })
-//               }
-// right now, i have it in renderFollowersItem and renderFollowingItem but it should prob also be implemented into search
-// bar/search results functionality
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '@/context/UserContext';
 import {
   getFollowersCount,
@@ -31,113 +24,114 @@ import {
   getFollowingList,
   unfollowUser,
   removeFollower,
-  getDisplayName,
   getUserName,
-  resolveAvatarUrl,
+} from '@/FE-services/follows.service';
+import { resolveAvatarUrl } from '@/lib/resolveAvatarUrl';
+import { supabase } from '@/lib/supabaseClient';
+import { fetchPostsByCreatorId } from '@/constants/exploreItems';
 
-} from '../../FE-services/follows.service';
-import { useRouter } from 'expo-router';
-import {supabase} from "@/lib/supabaseClient";
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BASE_WIDTH = 390;
+const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
+const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 
-const AVATAR_BUCKET_CANDIDATES = [
-  process.env.EXPO_PUBLIC_SUPABASE_AVATARS_BUCKET,
-  'images',
-  'avatars',
-].filter(Boolean);
+const DARK = '#5c3d3d';
+const PAGE_BG = '#fdf5f3';
+const H_PAD = responsive(16, 12, 24);
+const COLUMN_GAP = responsive(12, 8, 16);
+const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
 
-const fileExtensionFromUri = (uri) => {
-  const clean = String(uri || '').split('?')[0].split('#')[0];
-  const maybeExt = clean.includes('.') ? clean.slice(clean.lastIndexOf('.') + 1).toLowerCase() : '';
-  return maybeExt && maybeExt.length <= 5 ? maybeExt : 'jpg';
-};
-
-const base64ToUint8Array = (base64) => {
-  const binary = globalThis.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-};
-
-const imagePickerMediaTypes =
-  ImagePicker?.MediaType?.Images ??
-  ImagePicker?.MediaTypeOptions?.Images;
+function formatStat(n) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return '0';
+  return n >= 1000 ? n.toLocaleString() : String(n);
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useUser();
   const currentUserId = user?.id;
+
   const [profile, setProfile] = useState(null);
-
-  useEffect(() => {
-    const loadProfile = async () => {
-      if (!user?.id) return;
-
-      const { data, error } = await supabase
-          .from('users')
-          .select('first_name, last_name, username, display_name, avatar_url, bio, level')
-          .eq('user_id', user.id)
-          .single();
-
-      if (error) {
-        console.error('Error loading profile:', error);
-        return;
-      }
-
-      console.log('profile row:', data);
-      const avatarUrl = await resolveAvatarUrl(data?.avatar_url || '');
-      setProfile({
-        ...(data || {}),
-        avatar_url: avatarUrl,
-      });
-      setBioDraft(data?.bio || '');
-      setUsernameDraft(data?.username || '');
-    };
-
-    loadProfile();
-  }, [user?.id]);
-
-  const userName = getUserName(profile);
-  const displayName = getDisplayName(profile);
-
   const [loading, setLoading] = useState(true);
+  const [userPosts, setUserPosts] = useState([]);
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
-
   const [followersModalVisible, setFollowersModalVisible] = useState(false);
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
-  const [avatarUploading, setAvatarUploading] = useState(false);
-  const [editingBio, setEditingBio] = useState(false);
-  const [bioDraft, setBioDraft] = useState('');
-  const [bioSaving, setBioSaving] = useState(false);
-  const [editingUsername, setEditingUsername] = useState(false);
-  const [usernameDraft, setUsernameDraft] = useState('');
-  const [usernameSaving, setUsernameSaving] = useState(false);
+
+  const userName = getUserName(profile);
+
+  const loadProfileRow = useCallback(async () => {
+    if (!user?.id || !supabase) return;
+    const { data, error } = await supabase
+      .from('users')
+      .select('first_name, last_name, username, display_name, avatar_url, bio, level')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error loading profile:', error);
+      return;
+    }
+
+    const avatarUrl = await resolveAvatarUrl(data?.avatar_url || '');
+    setProfile({
+      ...(data || {}),
+      avatar_url: avatarUrl,
+    });
+  }, [user?.id]);
 
   async function loadCounts() {
     if (!currentUserId) return;
-
     const [followersTotal, followingTotal] = await Promise.all([
       getFollowersCount(currentUserId),
       getFollowingCount(currentUserId),
     ]);
-
     setFollowersCount(followersTotal);
     setFollowingCount(followingTotal);
   }
 
+  async function loadPosts() {
+    if (!currentUserId) return;
+    try {
+      const posts = await fetchPostsByCreatorId(currentUserId);
+      setUserPosts(posts);
+    } catch (error) {
+      console.error('Error loading posts:', error);
+    }
+  }
+
+  const refreshAll = useCallback(async () => {
+    if (!currentUserId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      await Promise.all([loadProfileRow(), loadCounts(), loadPosts()]);
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+      Alert.alert('Error', 'Could not load profile data.');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId, loadProfileRow]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshAll();
+    }, [refreshAll])
+  );
+
   function goToOtherProfile(targetUserId) {
     if (!targetUserId) return;
-
     setFollowersModalVisible(false);
     setFollowingModalVisible(false);
-
     setTimeout(() => {
       router.push({
         pathname: '/home/other.profile',
@@ -146,23 +140,8 @@ export default function ProfileScreen() {
     }, 150);
   }
 
-  async function loadProfileData() {
-    if (!currentUserId) return;
-
-    try {
-      setLoading(true);
-      await loadCounts();
-    } catch (error) {
-      console.error('Error loading profile data:', error);
-      Alert.alert('Error', 'Could not load profile data.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function openFollowersModal() {
     if (!currentUserId) return;
-
     try {
       const data = await getFollowersList(currentUserId);
       setFollowers(data);
@@ -175,7 +154,6 @@ export default function ProfileScreen() {
 
   async function openFollowingModal() {
     if (!currentUserId) return;
-
     try {
       const data = await getFollowingList(currentUserId);
       setFollowing(data);
@@ -190,10 +168,7 @@ export default function ProfileScreen() {
     try {
       setActionLoadingId(targetUserId);
       await unfollowUser(currentUserId, targetUserId);
-
-      setFollowing((prev) =>
-          prev.filter((item) => item.user_id !== targetUserId)
-      );
+      setFollowing((prev) => prev.filter((item) => item.user_id !== targetUserId));
       setFollowingCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error unfollowing user:', error);
@@ -207,10 +182,7 @@ export default function ProfileScreen() {
     try {
       setActionLoadingId(followerUserId);
       await removeFollower(currentUserId, followerUserId);
-
-      setFollowers((prev) =>
-          prev.filter((item) => item.user_id !== followerUserId)
-      );
+      setFollowers((prev) => prev.filter((item) => item.user_id !== followerUserId));
       setFollowersCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error removing follower:', error);
@@ -220,625 +192,366 @@ export default function ProfileScreen() {
     }
   }
 
-  async function uploadAvatarToStorage({ uri, base64, userId }) {
-    if (!uri || !userId || !supabase) {
-      throw new Error('Missing avatar upload requirements.');
-    }
-
-    const ext = fileExtensionFromUri(uri);
-    // Keep user id as first folder to satisfy common storage RLS policies.
-    const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-
-    const uploadBody = base64
-      ? base64ToUint8Array(base64)
-      : await (async () => {
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          if (!blob || typeof blob.size !== 'number' || blob.size <= 0) {
-            throw new Error('Selected image appears empty.');
-          }
-          return blob;
-        })();
-
-    let lastError = null;
-    for (const bucket of AVATAR_BUCKET_CANDIDATES) {
-      const { error } = await supabase.storage.from(bucket).upload(filePath, uploadBody, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: base64 ? `image/${ext}` : uploadBody.type || `image/${ext}`,
-      });
-
-      if (!error) {
-        const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-        if (data?.publicUrl?.startsWith('http://') || data?.publicUrl?.startsWith('https://')) {
-          return data.publicUrl;
-        }
-      } else {
-        lastError = error;
-      }
-    }
-
-    throw lastError || new Error('Avatar upload failed.');
-  }
-
-  async function handleEditPhoto() {
-    if (!currentUserId || !supabase) {
-      Alert.alert('Error', 'Please sign in again and retry.');
-      return;
-    }
-
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow photo library access to change your profile photo.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        ...(imagePickerMediaTypes ? { mediaTypes: imagePickerMediaTypes } : {}),
-        allowsEditing: true,
-        quality: 0.9,
-        base64: true,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      setAvatarUploading(true);
-      const selectedAsset = result.assets[0];
-      const uploadedUrl = await uploadAvatarToStorage({
-        uri: selectedAsset.uri,
-        base64: selectedAsset.base64 || null,
-        userId: currentUserId,
-      });
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ avatar_url: uploadedUrl })
-        .eq('user_id', currentUserId);
-
-      if (updateError) throw updateError;
-
-      setProfile((prev) => ({
-        ...(prev || {}),
-        avatar_url: uploadedUrl,
-      }));
-    } catch (error) {
-      console.error('Error updating avatar:', error);
-      Alert.alert('Error', error?.message || 'Could not update profile photo.');
-    } finally {
-      setAvatarUploading(false);
-    }
-  }
-
-  async function handleSaveBio() {
-    if (!currentUserId || !supabase) return;
-
-    try {
-      setBioSaving(true);
-      const trimmed = bioDraft.trim();
-
-      const { error } = await supabase
-        .from('users')
-        .update({ bio: trimmed || null })
-        .eq('user_id', currentUserId);
-
-      if (error) throw error;
-
-      setProfile((prev) => ({
-        ...(prev || {}),
-        bio: trimmed,
-      }));
-      setEditingBio(false);
-    } catch (error) {
-      console.error('Error updating bio:', error);
-      Alert.alert('Error', error?.message || 'Could not update bio.');
-    } finally {
-      setBioSaving(false);
-    }
-  }
-
-  async function handleSaveUsername() {
-    if (!currentUserId || !supabase) return;
-
-    const normalized = usernameDraft.trim().toLowerCase();
-    const usernameRegex = /^[a-z0-9_]{3,20}$/;
-
-    if (!usernameRegex.test(normalized)) {
-      Alert.alert(
-        'Invalid username',
-        'Use 3-20 characters with lowercase letters, numbers, or underscores.'
-      );
-      return;
-    }
-
-    try {
-      setUsernameSaving(true);
-      const { error } = await supabase
-        .from('users')
-        .update({ username: normalized })
-        .eq('user_id', currentUserId);
-
-      if (error) {
-        if (String(error.message || '').toLowerCase().includes('duplicate')) {
-          throw new Error('That username is already taken.');
-        }
-        throw error;
-      }
-
-      setProfile((prev) => ({
-        ...(prev || {}),
-        username: normalized,
-      }));
-      setUsernameDraft(normalized);
-      setEditingUsername(false);
-    } catch (error) {
-      console.error('Error updating username:', error);
-      Alert.alert('Error', error?.message || 'Could not update username.');
-    } finally {
-      setUsernameSaving(false);
-    }
-  }
-
-  useEffect(() => {
-    loadProfileData();
-  }, [currentUserId]);
-
   function renderFollowersItem({ item }) {
     const isBusy = actionLoadingId === item.user_id;
-
     return (
-        <View style={styles.listItem}>
-          <Pressable
-              style={styles.listTextContainer}
-              onPress={() => goToOtherProfile(item.user_id)}
-          >
-            <Text style={styles.listName}>{getUserName(item)}</Text>
-            {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
-          </Pressable>
-
-          <Pressable
-              style={[styles.actionButton, styles.removeButton]}
-              onPress={() => handleRemoveFollower(item.user_id)}
-              disabled={isBusy}
-          >
-            <Text style={styles.actionButtonText}>
-              {isBusy ? '...' : 'Remove follower'}
-            </Text>
-          </Pressable>
-        </View>
+      <View style={styles.listItem}>
+        <Pressable style={styles.listTextContainer} onPress={() => goToOtherProfile(item.user_id)}>
+          <Text style={styles.listName}>{getUserName(item)}</Text>
+          {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
+        </Pressable>
+        <Pressable
+          style={[styles.modalActionButton, styles.removeButton]}
+          onPress={() => handleRemoveFollower(item.user_id)}
+          disabled={isBusy}
+        >
+          <Text style={styles.modalActionButtonText}>{isBusy ? '...' : 'Remove follower'}</Text>
+        </Pressable>
+      </View>
     );
   }
 
   function renderFollowingItem({ item }) {
     const isBusy = actionLoadingId === item.user_id;
-
     return (
-        <View style={styles.listItem}>
-          <Pressable
-              style={styles.listTextContainer}
-              onPress={() => goToOtherProfile(item.user_id)}
-          >
-            <Text style={styles.listName}>{getUserName(item)}</Text>
-            {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
-          </Pressable>
-
-          <Pressable
-              style={[styles.actionButton, styles.unfollowButton]}
-              onPress={() => handleUnfollow(item.user_id)}
-              disabled={isBusy}
-          >
-            <Text style={styles.actionButtonText}>
-              {isBusy ? '...' : 'Unfollow'}
-            </Text>
-          </Pressable>
-        </View>
+      <View style={styles.listItem}>
+        <Pressable style={styles.listTextContainer} onPress={() => goToOtherProfile(item.user_id)}>
+          <Text style={styles.listName}>{getUserName(item)}</Text>
+          {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
+        </Pressable>
+        <Pressable
+          style={[styles.modalActionButton, styles.unfollowButton]}
+          onPress={() => handleUnfollow(item.user_id)}
+          disabled={isBusy}
+        >
+          <Text style={styles.modalActionButtonText}>{isBusy ? '...' : 'Unfollow'}</Text>
+        </Pressable>
+      </View>
     );
   }
 
-  if (loading) {
+  const postsCount = userPosts.length;
+  const bioText =
+    profile?.bio?.trim() || 'Hello, I am username and I love making crafts';
+
+  if (loading && !profile) {
     return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
+      <View style={styles.root}>
+        <ImageBackground
+          source={require('@/assets/images/goal_bg.png')}
+          resizeMode="cover"
+          style={styles.backgroundLayer}
+        />
+        <View style={[styles.loadingContainer, styles.foreground]}>
+          <ActivityIndicator size="large" color={DARK} />
         </View>
+      </View>
     );
   }
 
   return (
-      <View style={styles.container}>
-        <Image
+    <View style={styles.root}>
+      <ImageBackground
+        source={require('@/assets/images/goal_bg.png')}
+        resizeMode="cover"
+        style={styles.backgroundLayer}
+      />
+      <View style={styles.foreground}>
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <Pressable
+            style={({ pressed }) => [styles.headerBack, pressed && styles.headerBackPressed]}
+            onPress={() => router.back()}
+            hitSlop={12}
+          >
+            <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+        <View style={styles.profileHeaderRow}>
+          <Image
             source={
               profile?.avatar_url
                 ? { uri: profile.avatar_url }
                 : require('@/assets/images/default_user.jpg')
             }
             style={styles.avatar}
-        />
-        <Pressable
-          style={styles.editPhotoButton}
-          onPress={handleEditPhoto}
-          disabled={avatarUploading}
-        >
-          <Text style={styles.editPhotoButtonText}>
-            {avatarUploading ? 'Uploading...' : 'Edit photo'}
-          </Text>
-        </Pressable>
-
-        {!editingUsername ? (
-          <>
-            <Text style={styles.name}>{userName}</Text>
-            <Pressable
-              style={styles.editUsernameButton}
-              onPress={() => {
-                setUsernameDraft(profile?.username || '');
-                setEditingUsername(true);
-              }}
-            >
-              <Text style={styles.editUsernameButtonText}>Edit username</Text>
-            </Pressable>
-          </>
-        ) : (
-          <View style={styles.editUsernameContainer}>
-            <TextInput
-              style={styles.usernameInput}
-              placeholder="username"
-              placeholderTextColor="#9CA3AF"
-              value={usernameDraft}
-              onChangeText={(text) =>
-                setUsernameDraft(text.replace(/\s+/g, '').toLowerCase().slice(0, 20))
-              }
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={20}
-            />
-            <View style={styles.editUsernameActions}>
-              <Pressable
-                style={[styles.usernameActionButton, styles.usernameCancelButton]}
-                onPress={() => {
-                  setUsernameDraft(profile?.username || '');
-                  setEditingUsername(false);
-                }}
-                disabled={usernameSaving}
-              >
-                <Text style={styles.usernameCancelButtonText}>Cancel</Text>
+          />
+          <View style={styles.headerRight}>
+            <Text style={styles.userName}>{userName}</Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>Posts</Text>
+                <Text style={styles.statNumber}>{formatStat(postsCount)}</Text>
+              </View>
+              <Pressable style={styles.statCell} onPress={openFollowersModal}>
+                <Text style={styles.statLabel}>Followers</Text>
+                <Text style={styles.statNumber}>{formatStat(followersCount)}</Text>
               </Pressable>
-              <Pressable
-                style={[styles.usernameActionButton, styles.usernameSaveButton]}
-                onPress={handleSaveUsername}
-                disabled={usernameSaving}
-              >
-                <Text style={styles.usernameSaveButtonText}>
-                  {usernameSaving ? 'Saving...' : 'Save username'}
-                </Text>
+              <Pressable style={styles.statCell} onPress={openFollowingModal}>
+                <Text style={styles.statLabel}>Following</Text>
+                <Text style={styles.statNumber}>{formatStat(followingCount)}</Text>
               </Pressable>
             </View>
           </View>
-        )}
-        <Text style={styles.subtitle}>{profile?.bio?.trim() || 'This is your profile page.'}</Text>
-        {!editingBio ? (
+        </View>
+
+        <Text style={styles.bio}>{bioText}</Text>
+
+        <View style={styles.actionRow}>
           <Pressable
-            style={styles.editBioButton}
-            onPress={() => {
-              setBioDraft(profile?.bio || '');
-              setEditingBio(true);
-            }}
+            style={({ pressed }) => [styles.pillButton, pressed && styles.pillButtonPressed]}
+            onPress={() => router.push('/home/edit-profile')}
           >
-            <Text style={styles.editBioButtonText}>Edit bio</Text>
+            <Text style={styles.pillButtonText}>Edit Profile</Text>
           </Pressable>
-        ) : (
-          <View style={styles.editBioContainer}>
-            <TextInput
-              style={styles.bioInput}
-              placeholder="Write your bio..."
-              placeholderTextColor="#9CA3AF"
-              value={bioDraft}
-              onChangeText={(text) => setBioDraft(text.slice(0, 160))}
-              multiline
-              maxLength={160}
-            />
-            <View style={styles.editBioActions}>
-              <Pressable
-                style={[styles.bioActionButton, styles.bioCancelButton]}
-                onPress={() => {
-                  setBioDraft(profile?.bio || '');
-                  setEditingBio(false);
-                }}
-                disabled={bioSaving}
-              >
-                <Text style={styles.bioCancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.bioActionButton, styles.bioSaveButton]}
-                onPress={handleSaveBio}
-                disabled={bioSaving}
-              >
-                <Text style={styles.bioSaveButtonText}>{bioSaving ? 'Saving...' : 'Save bio'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.statsRow}>
-          <Pressable style={styles.statCard} onPress={openFollowersModal}>
-            <Text style={styles.statNumber}>{followersCount}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
-          </Pressable>
-
-          <Pressable style={styles.statCard} onPress={openFollowingModal}>
-            <Text style={styles.statNumber}>{followingCount}</Text>
-            <Text style={styles.statLabel}>Following</Text>
+          <Pressable
+            style={({ pressed }) => [styles.pillButton, pressed && styles.pillButtonPressed]}
+            onPress={() =>
+              router.push({
+                pathname: '/home/saves',
+                params: { fromRoute: 'profile' },
+              })
+            }
+          >
+            <Text style={styles.pillButtonText}>Saved</Text>
           </Pressable>
         </View>
 
-        <Pressable
-          style={styles.savesButton}
-          onPress={() =>
-            router.push({
-              pathname: '/home/saves',
-              params: { fromRoute: 'profile' },
-            })
-          }
-        >
-          <Text style={styles.savesButtonText}>Saves</Text>
-        </Pressable>
-
-        <Modal
-            visible={followersModalVisible}
-            animationType="slide"
-            transparent
-            onRequestClose={() => setFollowersModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Followers</Text>
-
-              <FlatList
-                  data={followers}
-                  keyExtractor={(item) => item.user_id}
-                  renderItem={renderFollowersItem}
-                  ListEmptyComponent={
-                    <Text style={styles.emptyText}>No followers yet.</Text>
-                  }
-              />
-
+        <View style={styles.grid}>
+          {userPosts.length > 0 ? (
+            userPosts.map((post) => (
               <Pressable
-                  style={styles.closeButton}
-                  onPress={() => setFollowersModalVisible(false)}
+                key={post.id}
+                style={styles.postTile}
+                onPress={() =>
+                  router.push({
+                    pathname: '/home/explore/[id]',
+                    params: { id: post.id, fromRoute: 'profile' },
+                  })
+                }
               >
-                <Text style={styles.closeButtonText}>Close</Text>
+                {post.imageUrl ? (
+                  <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.postPlaceholder}>
+                    <Text style={styles.postPlaceholderText}>placeholder</Text>
+                  </View>
+                )}
               </Pressable>
-            </View>
-          </View>
-        </Modal>
-
-        <Modal
-            visible={followingModalVisible}
-            animationType="slide"
-            transparent
-            onRequestClose={() => setFollowingModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Following</Text>
-
-              <FlatList
-                  data={following}
-                  keyExtractor={(item) => item.user_id}
-                  renderItem={renderFollowingItem}
-                  ListEmptyComponent={
-                    <Text style={styles.emptyText}>
-                      You are not following anyone yet.
-                    </Text>
-                  }
-              />
-
-              <Pressable
-                  style={styles.closeButton}
-                  onPress={() => setFollowingModalVisible(false)}
-              >
-                <Text style={styles.closeButtonText}>Close</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
+            ))
+          ) : (
+            <Text style={styles.noPostsText}>No posts yet.</Text>
+          )}
+        </View>
+        </ScrollView>
       </View>
+
+      <Modal
+        visible={followersModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFollowersModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Followers</Text>
+            <FlatList
+              data={followers}
+              keyExtractor={(item) => item.user_id}
+              renderItem={renderFollowersItem}
+              ListEmptyComponent={<Text style={styles.emptyText}>No followers yet.</Text>}
+            />
+            <Pressable style={styles.closeButton} onPress={() => setFollowersModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={followingModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFollowingModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Following</Text>
+            <FlatList
+              data={following}
+              keyExtractor={(item) => item.user_id}
+              renderItem={renderFollowingItem}
+              ListEmptyComponent={
+                <Text style={styles.emptyText}>You are not following anyone yet.</Text>
+              }
+            />
+            <Pressable style={styles.closeButton} onPress={() => setFollowingModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: PAGE_BG,
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  foreground: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  container: {
-    flex: 1,
+  topBar: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 10,
+  },
+  headerBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  headerBackPressed: {
+    opacity: 0.88,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: H_PAD,
+    paddingTop: 8,
+    paddingBottom: responsive(40, 28, 52),
+  },
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 14,
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: responsive(100, 88, 112),
+    height: responsive(100, 88, 112),
+    borderRadius: responsive(50, 44, 56),
+    backgroundColor: '#e8e0dc',
+  },
+  headerRight: {
+    flex: 1,
+    minWidth: 0,
+  },
+  userName: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(26, 22, 30),
+    color: DARK,
     marginBottom: 10,
-  },
-  editPhotoButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 14,
-  },
-  editPhotoButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  editUsernameButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 10,
-  },
-  editUsernameButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  editUsernameContainer: {
-    width: '100%',
-    marginBottom: 10,
-  },
-  usernameInput: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#D1D5DB',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#111827',
-    fontSize: 14,
-  },
-  editUsernameActions: {
-    marginTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  usernameActionButton: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  usernameCancelButton: {
-    backgroundColor: '#F3F4F6',
-  },
-  usernameSaveButton: {
-    backgroundColor: '#111827',
-  },
-  usernameCancelButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  usernameSaveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  editBioButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 14,
-  },
-  editBioButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  editBioContainer: {
-    width: '100%',
-    marginBottom: 14,
-  },
-  bioInput: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#D1D5DB',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    color: '#111827',
-    fontSize: 14,
-  },
-  editBioActions: {
-    marginTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  bioActionButton: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  bioCancelButton: {
-    backgroundColor: '#F3F4F6',
-  },
-  bioSaveButton: {
-    backgroundColor: '#111827',
-  },
-  bioCancelButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  bioSaveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 16,
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  savesButton: {
-    marginTop: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-  },
-  savesButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statCard: {
-    minWidth: 120,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
+  statCell: {
+    flex: 1,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
   },
   statLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#7a6560',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  statNumber: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 16, 22),
+    color: DARK,
+  },
+  bio: {
+    fontSize: 15,
+    color: '#4b3f3c',
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 22,
+  },
+  pillButton: {
+    flex: 1,
+    backgroundColor: '#f5d0d0',
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#5c3d3d',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pillButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
+  },
+  pillButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(17, 15, 20),
+    color: DARK,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: COLUMN_GAP,
+  },
+  postTile: {
+    width: COL_WIDTH,
+    aspectRatio: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#ede4e2',
+  },
+  postImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postPlaceholderText: {
+    fontSize: 13,
+    color: '#8a7874',
+  },
+  noPostsText: {
+    width: '100%',
+    textAlign: 'center',
+    color: '#8a7874',
+    fontSize: 15,
+    paddingVertical: 24,
   },
   modalOverlay: {
     flex: 1,
@@ -882,7 +595,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
-  actionButton: {
+  modalActionButton: {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
@@ -893,7 +606,7 @@ const styles = StyleSheet.create({
   removeButton: {
     backgroundColor: '#9A3412',
   },
-  actionButtonText: {
+  modalActionButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',

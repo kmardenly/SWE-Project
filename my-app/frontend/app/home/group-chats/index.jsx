@@ -34,9 +34,14 @@ export default function GroupChatsScreen() {
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChats(user?.id).then((data) => {
-      if (mounted) setGroupChats(data);
-    });
+    fetchGroupChats(user?.id)
+      .then((data) => {
+        if (mounted) setGroupChats(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.warn('[GroupChats] list load failed', err);
+        if (mounted) setGroupChats([]);
+      });
     return () => {
       mounted = false;
     };

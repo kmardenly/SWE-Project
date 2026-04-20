@@ -41,6 +41,11 @@ const COLUMN_GAP = responsive(12, 8, 16);
 const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
 const DARK = '#5c3d3d';
 
+function formatStat(n) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return '0';
+  return n >= 1000 ? n.toLocaleString() : String(n);
+}
+
 export default function OtherProfileScreen() {
   const { user } = useUser();
   const currentUserId = user?.id;
@@ -72,6 +77,8 @@ export default function OtherProfileScreen() {
 
   const userName = getUserName(profile);
   const displayName = getDisplayName(profile);
+  const postsCount = userPosts.length;
+  const headerTitle = displayName || userName;
 
   async function loadScreen() {
     if (!viewedUserId) {
@@ -307,7 +314,7 @@ export default function OtherProfileScreen() {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.profileHeader}>
+            <View style={styles.profileHeaderRow}>
               <Image
                 source={
                   profile?.avatar_url
@@ -316,23 +323,26 @@ export default function OtherProfileScreen() {
                 }
                 style={styles.avatar}
               />
-
-              <View style={styles.profileInfo}>
-                <Text style={styles.name}>{displayName || userName}</Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.userName}>{headerTitle}</Text>
                 <View style={styles.statsRow}>
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>Posts</Text>
+                    <Text style={styles.statNumber}>{formatStat(postsCount)}</Text>
+                  </View>
                   <Pressable style={styles.statCell} onPress={openFollowersModal}>
                     <Text style={styles.statLabel}>Followers</Text>
-                    <Text style={styles.statNumber}>{followersCount}</Text>
+                    <Text style={styles.statNumber}>{formatStat(followersCount)}</Text>
                   </Pressable>
                   <Pressable style={styles.statCell} onPress={openFollowingModal}>
                     <Text style={styles.statLabel}>Following</Text>
-                    <Text style={styles.statNumber}>{followingCount}</Text>
+                    <Text style={styles.statNumber}>{formatStat(followingCount)}</Text>
                   </Pressable>
                 </View>
               </View>
             </View>
 
-            <Text style={styles.subtitle}>{profile?.bio || 'Hello, I am username and I love making crafts'}</Text>
+            <Text style={styles.bio}>{profile?.bio || 'Hello, I am username and I love making crafts'}</Text>
 
             {!isOwnProfile && (
               <View style={styles.actionRow}>
@@ -515,53 +525,56 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: H_PAD,
-    paddingBottom: responsive(48, 36, 60),
+    paddingTop: 8,
+    paddingBottom: responsive(40, 28, 52),
   },
-  profileHeader: {
+  profileHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 14,
   },
-  profileInfo: {
+  headerRight: {
     flex: 1,
-    marginLeft: 14,
+    minWidth: 0,
   },
   avatar: {
-    width: responsive(96, 82, 110),
-    height: responsive(96, 82, 110),
-    borderRadius: responsive(48, 41, 55),
-    backgroundColor: '#D2D2D2',
+    width: responsive(100, 88, 112),
+    height: responsive(100, 88, 112),
+    borderRadius: responsive(50, 44, 56),
+    backgroundColor: '#e8e0dc',
   },
-  name: {
-    fontSize: responsive(38, 30, 44),
-    color: DARK,
+  userName: {
     fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(26, 22, 30),
+    color: DARK,
+    marginBottom: 10,
   },
-  subtitle: {
-    marginTop: 14,
+  bio: {
+    fontSize: 15,
+    color: '#4b3f3c',
+    lineHeight: 22,
     marginBottom: 18,
-    fontSize: responsive(14, 13, 17),
-    lineHeight: responsive(20, 18, 24),
-    color: DARK,
-    fontFamily: 'Gaegu-Bold',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 24,
-    marginTop: 6,
+    justifyContent: 'space-between',
+    gap: 8,
   },
   statCell: {
-    minWidth: 84,
+    flex: 1,
+    alignItems: 'center',
   },
   statNumber: {
-    fontSize: responsive(34, 28, 40),
-    color: DARK,
     fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 16, 22),
+    color: DARK,
   },
   statLabel: {
-    fontSize: responsive(13, 12, 16),
-    color: DARK,
-    fontFamily: 'Gaegu-Bold',
+    fontSize: 12,
+    color: '#7a6560',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   actionRow: {
     flexDirection: 'row',

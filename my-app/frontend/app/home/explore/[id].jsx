@@ -192,6 +192,10 @@ export default function ExplorePhotoScreen() {
       });
       return;
     }
+    if (fromRoute === 'profile') {
+      router.replace('/home/profile');
+      return;
+    }
     if (fromUserId) {
       router.replace({
         pathname: '/home/other.profile',

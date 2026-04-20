@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat } from '@/lib/groupChats.service';
+import { fetchGroupChat, normalizeRouteChatId } from '@/lib/groupChats.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -23,21 +23,38 @@ function SettingsRow({ icon, label, value }) {
 }
 
 export default function GroupChatMoreScreen() {
-  const { chatId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const chatId = normalizeRouteChatId(params.chatId);
   const { user } = useUser();
   const [chat, setChat] = useState(null);
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChat(chatId, user?.id).then((data) => {
-      if (mounted) setChat(data);
-    });
+    if (!chatId) {
+      router.back();
+      return () => {
+        mounted = false;
+      };
+    }
+    fetchGroupChat(chatId, user?.id)
+      .then((data) => {
+        if (mounted) setChat(data);
+      })
+      .catch(() => {
+        if (mounted) setChat(null);
+      });
     return () => {
       mounted = false;
     };
   }, [chatId, user?.id]);
 
-  if (!chat) return null;
+  if (!chat) {
+    return (
+      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={DARK} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -16,7 +17,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat, sendGroupMessage } from '@/lib/groupChats.service';
+import { fetchGroupChat, normalizeRouteChatId, sendGroupMessage } from '@/lib/groupChats.service';
 import {
   pickChatImageFromLibrary,
   resolveChatImageUriForMessage,
@@ -29,7 +30,8 @@ const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * 
 const DARK = '#5c3d3d';
 
 export default function GroupChatDetailsScreen() {
-  const { chatId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const chatId = normalizeRouteChatId(params.chatId);
   const { user } = useUser();
   const [messageText, setMessageText] = useState('');
   const [pendingImage, setPendingImage] = useState(null);
@@ -37,24 +39,59 @@ export default function GroupChatDetailsScreen() {
   const [chat, setChat] = useState(null);
   const [sentMessages, setSentMessages] = useState([]);
   const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChat(chatId, user?.id).then((data) => {
-      if (!mounted) return;
-      if (!data) {
-        router.replace('/home/group-chats');
-        return;
-      }
-      setChat(data);
-      setSentMessages(data.messages ?? []);
-    });
+    setLoadError('');
+    setChat(null);
+
+    if (!chatId) {
+      router.replace('/home/group-chats');
+      return () => {
+        mounted = false;
+      };
+    }
+
+    fetchGroupChat(chatId, user?.id)
+      .then((data) => {
+        if (!mounted) return;
+        if (!data) {
+          router.replace('/home/group-chats');
+          return;
+        }
+        setChat(data);
+        setSentMessages(data.messages ?? []);
+      })
+      .catch((err) => {
+        console.warn('[GroupChatDetails] load failed', err);
+        if (!mounted) return;
+        setLoadError(err?.message || 'Could not open this chat.');
+      });
+
     return () => {
       mounted = false;
     };
   }, [chatId, user?.id]);
 
-  if (!chat) return null;
+  if (loadError) {
+    return (
+      <View style={[styles.root, styles.centered]}>
+        <Text style={styles.errorText}>{loadError}</Text>
+        <Pressable style={styles.retryBtn} onPress={() => router.replace('/home/group-chats')}>
+          <Text style={styles.retryBtnText}>Back to chats</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!chat) {
+    return (
+      <View style={[styles.root, styles.centered]}>
+        <ActivityIndicator size="large" color={DARK} />
+      </View>
+    );
+  }
 
   const handleAttachImage = async () => {
     if (isPickingImage) return;
@@ -307,5 +344,28 @@ const styles = StyleSheet.create({
     fontSize: responsive(20, 16, 24),
     color: DARK,
     paddingVertical: 6,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 16, 22),
+    color: DARK,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryBtn: {
+    backgroundColor: '#9f7f7f',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryBtnText: {
+    fontFamily: 'Gaegu-Bold',
+    color: '#fff',
+    fontSize: responsive(16, 14, 20),
   },
 });
