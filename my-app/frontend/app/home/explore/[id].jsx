@@ -1,21 +1,29 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
-  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '@/context/UserContext';
 
-import { fetchExploreItemById } from '@/constants/exploreItems';
+import {
+  createPostComment,
+  fetchExploreItemById,
+  getPostComments,
+  getPostSavedByUser,
+  getPostLikeSummary,
+  setPostSaved,
+  setPostLike,
+} from '@/constants/exploreItems';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -31,11 +39,20 @@ const CREAM = '#faf6f0';
 const H_PAD = responsive(16, 12, 24);
 
 export default function ExplorePhotoScreen() {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const fromUserId = Array.isArray(params.fromUserId) ? params.fromUserId[0] : params.fromUserId;
+  const fromRoute = Array.isArray(params.fromRoute) ? params.fromRoute[0] : params.fromRoute;
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const [comment, setComment] = useState('');
   const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [likeBusy, setLikeBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [commentBusy, setCommentBusy] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +76,17 @@ export default function ExplorePhotoScreen() {
           router.back();
           return;
         }
+        const [likeSummary, commentRows, savedState] = await Promise.all([
+          getPostLikeSummary(next.id, user?.id),
+          getPostComments(next.id),
+          user?.id ? getPostSavedByUser(next.id, user.id) : Promise.resolve(false),
+        ]);
+        if (!active) return;
         setItem(next);
+        setLiked(likeSummary.likedByCurrentUser);
+        setLikeCount(likeSummary.likeCount);
+        setComments(commentRows);
+        setSaved(savedState);
       } catch (error) {
         if (!active) return;
         setLoadError(error?.message || 'Unable to load this post.');
@@ -72,7 +99,79 @@ export default function ExplorePhotoScreen() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, user?.id]);
+
+  async function handleToggleLike() {
+    if (!item?.id) return;
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to like posts.');
+      return;
+    }
+    if (likeBusy) return;
+
+    const nextLiked = !liked;
+    const previousLiked = liked;
+
+    setLikeBusy(true);
+    setLiked(nextLiked);
+    setLikeCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
+
+    try {
+      await setPostLike(item.id, user.id, nextLiked);
+    } catch (error) {
+      setLiked(previousLiked);
+      setLikeCount((prev) => Math.max(0, prev + (previousLiked ? 1 : -1)));
+      Alert.alert('Error', error?.message || 'Could not update like.');
+    } finally {
+      setLikeBusy(false);
+    }
+  }
+
+  async function handleSubmitComment() {
+    if (!item?.id) return;
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to comment.');
+      return;
+    }
+
+    const trimmed = comment.trim();
+    if (!trimmed) return;
+    if (commentBusy) return;
+
+    setCommentBusy(true);
+    try {
+      const created = await createPostComment(item.id, user.id, trimmed);
+      setComments((prev) => [...prev, created]);
+      setComment('');
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not post comment.');
+    } finally {
+      setCommentBusy(false);
+    }
+  }
+
+  async function handleToggleSave() {
+    if (!item?.id) return;
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to save posts.');
+      return;
+    }
+    if (saveBusy) return;
+
+    const nextSaved = !saved;
+    const previous = saved;
+
+    setSaveBusy(true);
+    setSaved(nextSaved);
+    try {
+      await setPostSaved(item.id, user.id, nextSaved);
+    } catch (error) {
+      setSaved(previous);
+      Alert.alert('Error', error?.message || 'Could not update save.');
+    } finally {
+      setSaveBusy(false);
+    }
+  }
 
   if (loading || !item) return null;
 
@@ -81,10 +180,27 @@ export default function ExplorePhotoScreen() {
 
   // Pull these from your item data — add fallbacks for now
   const craftType = item.craftType ?? 'craft type';
-  const poster    = item.poster    ?? '@poster';
+  const poster = item.creatorUsername ? `@${item.creatorUsername}` : item.poster ?? '@poster';
   const title     = item.title     ?? 'title here';
   const caption   = item.caption   ?? '';
   const tags      = Array.isArray(item.tags) && item.tags.length ? item.tags : ['tag1', 'tag2', 'etc. tags'];
+  const handleBackPress = () => {
+    if (fromRoute === 'saves') {
+      router.replace({
+        pathname: '/home/saves',
+        params: { fromRoute: 'profile' },
+      });
+      return;
+    }
+    if (fromUserId) {
+      router.replace({
+        pathname: '/home/other.profile',
+        params: { userId: fromUserId },
+      });
+      return;
+    }
+    router.back();
+  };
 
   return (
     <View style={styles.root}>
@@ -94,13 +210,12 @@ export default function ExplorePhotoScreen() {
         style={styles.backgroundLayer}
       />
       <View style={styles.foreground} pointerEvents="box-none">
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.fill}>
 
             {/* Top bar */}
             <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
               <Pressable
-                onPress={() => router.back()}
+                onPress={handleBackPress}
                 style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
                 hitSlop={12}>
                 <Ionicons name="chevron-back" size={responsive(28, 24, 32)} color={DARK} />
@@ -111,11 +226,26 @@ export default function ExplorePhotoScreen() {
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}>
 
               {/* Post header: @poster + title (craft type shown as caption below photo) */}
               <View style={[styles.postHeader, { width: photoWidth }]}>
-                <Text style={styles.posterText}>{poster}</Text>
+                <Pressable
+                  onPress={() => {
+                    if (!item.creatorId) return;
+                    if (item.creatorId === user?.id) {
+                      router.push('/home/profile');
+                      return;
+                    }
+                    router.push({
+                      pathname: '/home/other.profile',
+                      params: { userId: item.creatorId },
+                    });
+                  }}
+                >
+                  <Text style={styles.posterText}>{poster}</Text>
+                </Pressable>
                 <Text style={styles.titleText}>{title}</Text>
               </View>
 
@@ -137,14 +267,17 @@ export default function ExplorePhotoScreen() {
 
               {/* Like / bookmark bar */}
               <View style={[styles.actionBar, { width: photoWidth }]}>
-                <Pressable onPress={() => setLiked((v) => !v)} hitSlop={10}>
-                  <Ionicons
-                    name={liked ? 'heart' : 'heart-outline'}
-                    size={responsive(28, 24, 34)}
-                    color={liked ? '#e84855' : DARK}
-                  />
-                </Pressable>
-                <Pressable onPress={() => setSaved((v) => !v)} hitSlop={10}>
+                <View style={styles.likeSection}>
+                  <Pressable onPress={handleToggleLike} hitSlop={10}>
+                    <Ionicons
+                      name={liked ? 'heart' : 'heart-outline'}
+                      size={responsive(28, 24, 34)}
+                      color={liked ? '#e84855' : DARK}
+                    />
+                  </Pressable>
+                  <Text style={styles.likeCountText}>{likeCount}</Text>
+                </View>
+                <Pressable onPress={handleToggleSave} hitSlop={10}>
                   <Ionicons
                     name={saved ? 'bookmark' : 'bookmark-outline'}
                     size={responsive(26, 22, 32)}
@@ -172,21 +305,48 @@ export default function ExplorePhotoScreen() {
 
                 <Text style={styles.commentsHeading}>comments</Text>
 
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="add a comment..."
-                  placeholderTextColor="#9a8080"
-                  value={comment}
-                  onChangeText={setComment}
-                  multiline
-                />
+                <View style={styles.commentComposer}>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder="add a comment..."
+                    placeholderTextColor="#9a8080"
+                    value={comment}
+                    onChangeText={setComment}
+                    multiline
+                    scrollEnabled={false}
+                  />
+                  <Pressable
+                    style={[styles.sendCommentButton, commentBusy && styles.sendCommentButtonDisabled]}
+                    onPress={handleSubmitComment}
+                    disabled={commentBusy}
+                  >
+                    <Text style={styles.sendCommentButtonText}>{commentBusy ? '...' : 'Post'}</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.commentsList}>
+                  {comments.length === 0 ? (
+                    <Text style={styles.noCommentsText}>No comments yet.</Text>
+                  ) : (
+                    comments.map((entry) => {
+                      const label = entry.username
+                        ? `@${entry.username}`
+                        : entry.displayName || 'Crafter';
+                      return (
+                        <View key={entry.id} style={styles.commentRow}>
+                          <Text style={styles.commentAuthor}>{label}</Text>
+                          <Text style={styles.commentContent}>{entry.content}</Text>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
 
                 <View style={styles.rule} />
               </View>
 
             </ScrollView>
           </View>
-        </TouchableWithoutFeedback>
       </View>
     </View>
   );
@@ -287,6 +447,16 @@ const styles = StyleSheet.create({
     borderColor: GINGHAM_YELLOW,
     borderRadius: 8,
   },
+  likeSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  likeCountText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(17, 15, 21),
+    color: DARK,
+  },
 
   // Text block below action bar
   textBlock: {
@@ -340,11 +510,57 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   commentInput: {
+    flex: 1,
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(15, 13, 18),
     color: DARK,
     minHeight: responsive(44, 40, 52),
     paddingVertical: 8,
     textAlignVertical: 'top',
+  },
+  commentComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sendCommentButton: {
+    backgroundColor: '#e8d5d5',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  sendCommentButtonDisabled: {
+    opacity: 0.6,
+  },
+  sendCommentButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    color: DARK,
+    fontSize: responsive(15, 13, 18),
+  },
+  commentsList: {
+    marginTop: 10,
+    gap: 10,
+  },
+  noCommentsText: {
+    fontFamily: 'Gaegu-Bold',
+    color: '#8d6f6f',
+    fontSize: responsive(14, 12, 16),
+  },
+  commentRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(92, 61, 61, 0.2)',
+    paddingBottom: 8,
+  },
+  commentAuthor: {
+    fontFamily: 'Gaegu-Bold',
+    color: DARK,
+    fontSize: responsive(14, 12, 16),
+  },
+  commentContent: {
+    marginTop: 2,
+    fontFamily: 'Gaegu-Bold',
+    color: DARK,
+    fontSize: responsive(14, 12, 16),
+    opacity: 0.95,
   },
 });

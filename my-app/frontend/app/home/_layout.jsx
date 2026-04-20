@@ -54,6 +54,12 @@ export default function HomeTabsLayout() {
             href: null,
           }}
         />
+        <Tabs.Screen
+          name="saves"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </View>
   );

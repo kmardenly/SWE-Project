@@ -15,10 +15,14 @@ async function normalizePost(post, media = []) {
   const parsed = parseContent(post?.content);
   const orderedMedia = [...(media || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const firstImage = orderedMedia.find((m) => m.media_type === 'image')?.media_url ?? null;
+  const creator = post?.users || null;
 
   return {
     id: String(post.post_id),
     creatorId: post.creator_id,
+    creatorUsername: creator?.username || '',
+    creatorDisplayName: creator?.display_name || '',
+    creatorAvatarUrl: creator?.avatar_url || null,
     title: parsed.title?.trim() || 'Untitled craft',
     craftType: parsed.craftType?.trim() || 'Craft',
     caption: parsed.caption?.trim() || '',
@@ -26,6 +30,27 @@ async function normalizePost(post, media = []) {
     imageUrl: await resolveMediaUrl(firstImage),
     createdAt: post.created_at ?? null,
   };
+}
+
+async function attachCreatorProfiles(posts) {
+  const safePosts = Array.isArray(posts) ? posts : [];
+  if (!safePosts.length || !supabase) return safePosts;
+
+  const creatorIds = [...new Set(safePosts.map((p) => p.creator_id).filter(Boolean))];
+  if (!creatorIds.length) return safePosts;
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('user_id, username, display_name, avatar_url')
+    .in('user_id', creatorIds);
+
+  if (error) throw error;
+
+  const usersById = new Map((users || []).map((u) => [u.user_id, u]));
+  return safePosts.map((post) => ({
+    ...post,
+    users: usersById.get(post.creator_id) || null,
+  }));
 }
 
 function parseBucketAndPath(value) {
@@ -127,7 +152,8 @@ export async function fetchExploreItems() {
   if (postsError) throw postsError;
   if (!posts?.length) return [];
 
-  const postIds = posts.map((p) => p.post_id);
+  const postsWithUsers = await attachCreatorProfiles(posts);
+  const postIds = postsWithUsers.map((p) => p.post_id);
   const { data: mediaRows, error: mediaError } = await supabase
     .from('post_media')
     .select('post_id, media_url, media_type, "order"')
@@ -143,7 +169,7 @@ export async function fetchExploreItems() {
   }, {});
 
   return Promise.all(
-    posts.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []))
+    postsWithUsers.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []))
   );
 }
 
@@ -166,5 +192,268 @@ export async function fetchExploreItemById(id) {
 
   if (mediaError) throw mediaError;
 
-  return await normalizePost(post, mediaRows || []);
+  const [postWithUser] = await attachCreatorProfiles([post]);
+  return await normalizePost(postWithUser, mediaRows || []);
+}
+
+export async function fetchPostsByCreatorId(creatorId) {
+  if (!supabase || !creatorId) return [];
+
+  const { data: posts, error: postsError } = await supabase
+    .from('posts')
+    .select('post_id, creator_id, content, created_at')
+    .eq('creator_id', creatorId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  if (postsError) throw postsError;
+  if (!posts?.length) return [];
+
+  const postsWithUsers = await attachCreatorProfiles(posts);
+  const postIds = postsWithUsers.map((p) => p.post_id);
+  const { data: mediaRows, error: mediaError } = await supabase
+    .from('post_media')
+    .select('post_id, media_url, media_type, "order"')
+    .in('post_id', postIds);
+
+  if (mediaError) throw mediaError;
+
+  const mediaByPost = (mediaRows || []).reduce((acc, row) => {
+    const key = String(row.post_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(row);
+    return acc;
+  }, {});
+
+  return Promise.all(
+    postsWithUsers.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []))
+  );
+}
+
+export async function getPostLikeSummary(postId, userId) {
+  if (!supabase || !postId) {
+    return { likeCount: 0, likedByCurrentUser: false };
+  }
+
+  const [{ count, error: countError }, { data: likedRow, error: likedError }] = await Promise.all([
+    supabase
+      .from('post_likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('post_id', postId),
+    userId
+      ? supabase
+          .from('post_likes')
+          .select('like_id')
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (countError) throw countError;
+  if (likedError) throw likedError;
+
+  return {
+    likeCount: count || 0,
+    likedByCurrentUser: !!likedRow,
+  };
+}
+
+export async function setPostLike(postId, userId, shouldLike) {
+  if (!supabase || !postId || !userId) {
+    throw new Error('Missing post or user information for like action.');
+  }
+
+  if (shouldLike) {
+    const { data: existingRow, error: existingError } = await supabase
+      .from('post_likes')
+      .select('like_id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (existingRow) return;
+
+    const { error: insertError } = await supabase
+      .from('post_likes')
+      .insert([{ post_id: postId, user_id: userId }]);
+
+    if (insertError) throw insertError;
+    return;
+  }
+
+  const { error: deleteError } = await supabase
+    .from('post_likes')
+    .delete()
+    .eq('post_id', postId)
+    .eq('user_id', userId);
+
+  if (deleteError) throw deleteError;
+}
+
+export async function getPostComments(postId) {
+  if (!supabase || !postId) return [];
+
+  const { data: rows, error } = await supabase
+    .from('post_comments')
+    .select('comment_id, post_id, user_id, content, created_at')
+    .eq('post_id', postId)
+    .is('parent_id', null)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  if (!rows?.length) return [];
+
+  const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('user_id, username, display_name, avatar_url')
+    .in('user_id', userIds);
+
+  if (usersError) throw usersError;
+
+  const usersById = new Map((users || []).map((u) => [u.user_id, u]));
+
+  return rows.map((row) => {
+    const author = usersById.get(row.user_id);
+    return {
+      id: row.comment_id,
+      postId: row.post_id,
+      userId: row.user_id,
+      content: row.content || '',
+      createdAt: row.created_at,
+      username: author?.username || '',
+      displayName: author?.display_name || '',
+      avatarUrl: author?.avatar_url || null,
+    };
+  });
+}
+
+export async function createPostComment(postId, userId, content) {
+  if (!supabase || !postId || !userId) {
+    throw new Error('Missing post or user information for comment.');
+  }
+
+  const trimmed = String(content || '').trim();
+  if (!trimmed) throw new Error('Comment cannot be empty.');
+
+  const { data: inserted, error } = await supabase
+    .from('post_comments')
+    .insert([{ post_id: postId, user_id: userId, content: trimmed }])
+    .select('comment_id, post_id, user_id, content, created_at')
+    .single();
+
+  if (error) throw error;
+
+  const { data: author, error: authorError } = await supabase
+    .from('users')
+    .select('user_id, username, display_name, avatar_url')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (authorError) throw authorError;
+
+  return {
+    id: inserted.comment_id,
+    postId: inserted.post_id,
+    userId: inserted.user_id,
+    content: inserted.content || '',
+    createdAt: inserted.created_at,
+    username: author?.username || '',
+    displayName: author?.display_name || '',
+    avatarUrl: author?.avatar_url || null,
+  };
+}
+
+export async function fetchSavedPostsByUserId(userId) {
+  if (!supabase || !userId) return [];
+
+  const { data: bookmarks, error: bookmarksError } = await supabase
+    .from('bookmarks')
+    .select('post_id, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (bookmarksError) throw bookmarksError;
+  if (!bookmarks?.length) return [];
+
+  const postIds = bookmarks.map((row) => row.post_id);
+  const { data: posts, error: postsError } = await supabase
+    .from('posts')
+    .select('post_id, creator_id, content, created_at, deleted_at')
+    .in('post_id', postIds)
+    .is('deleted_at', null);
+
+  if (postsError) throw postsError;
+  if (!posts?.length) return [];
+
+  const postsWithUsers = await attachCreatorProfiles(posts);
+  const { data: mediaRows, error: mediaError } = await supabase
+    .from('post_media')
+    .select('post_id, media_url, media_type, "order"')
+    .in('post_id', postIds);
+
+  if (mediaError) throw mediaError;
+
+  const mediaByPost = (mediaRows || []).reduce((acc, row) => {
+    const key = String(row.post_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(row);
+    return acc;
+  }, {});
+
+  const normalized = await Promise.all(
+    postsWithUsers.map((post) => normalizePost(post, mediaByPost[String(post.post_id)] || []))
+  );
+
+  const bookmarkOrder = new Map(bookmarks.map((row, index) => [String(row.post_id), index]));
+  return normalized.sort((a, b) => (bookmarkOrder.get(a.id) ?? 0) - (bookmarkOrder.get(b.id) ?? 0));
+}
+
+export async function getPostSavedByUser(postId, userId) {
+  if (!supabase || !postId || !userId) return false;
+
+  const { data, error } = await supabase
+    .from('bookmarks')
+    .select('bookmark_id')
+    .eq('post_id', postId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return !!data;
+}
+
+export async function setPostSaved(postId, userId, shouldSave) {
+  if (!supabase || !postId || !userId) {
+    throw new Error('Missing post or user information for save action.');
+  }
+
+  if (shouldSave) {
+    const { data: existing, error: existingError } = await supabase
+      .from('bookmarks')
+      .select('bookmark_id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (existing) return;
+
+    const { error: insertError } = await supabase
+      .from('bookmarks')
+      .insert([{ post_id: postId, user_id: userId }]);
+
+    if (insertError) throw insertError;
+    return;
+  }
+
+  const { error: deleteError } = await supabase
+    .from('bookmarks')
+    .delete()
+    .eq('post_id', postId)
+    .eq('user_id', userId);
+
+  if (deleteError) throw deleteError;
 }

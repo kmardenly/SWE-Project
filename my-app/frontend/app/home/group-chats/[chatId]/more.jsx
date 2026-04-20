@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '@/context/UserContext';
 
 import { fetchGroupChat } from '@/lib/groupChats.service';
 
@@ -23,17 +24,18 @@ function SettingsRow({ icon, label, value }) {
 
 export default function GroupChatMoreScreen() {
   const { chatId } = useLocalSearchParams();
+  const { user } = useUser();
   const [chat, setChat] = useState(null);
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChat(chatId).then((data) => {
+    fetchGroupChat(chatId, user?.id).then((data) => {
       if (mounted) setChat(data);
     });
     return () => {
       mounted = false;
     };
-  }, [chatId]);
+  }, [chatId, user?.id]);
 
   if (!chat) return null;
 

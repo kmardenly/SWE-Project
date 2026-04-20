@@ -2,15 +2,20 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter} from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '@/context/UserContext';
 import {
   getFollowersCount,
@@ -24,11 +29,23 @@ import {
   getDisplayName,
   getUserName,
 } from '../../FE-services/follows.service';
+import { fetchPostsByCreatorId } from '@/constants/exploreItems';
+import { getOrCreateDirectMessageChat } from '@/lib/groupChats.service';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BASE_WIDTH = 390;
+const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
+const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
+const H_PAD = responsive(16, 12, 24);
+const COLUMN_GAP = responsive(12, 8, 16);
+const COL_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - COLUMN_GAP) / 2;
+const DARK = '#5c3d3d';
 
 export default function OtherProfileScreen() {
   const { user } = useUser();
   const currentUserId = user?.id;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams();
   const viewedUserId = Array.isArray(params.userId)
@@ -46,6 +63,7 @@ export default function OtherProfileScreen() {
 
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
+  const [userPosts, setUserPosts] = useState([]);
 
   const [followersModalVisible, setFollowersModalVisible] = useState(false);
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
@@ -56,20 +74,25 @@ export default function OtherProfileScreen() {
   const displayName = getDisplayName(profile);
 
   async function loadScreen() {
-    if (!viewedUserId) return;
+    if (!viewedUserId) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
 
-      const [profileData, followersTotal, followingTotal] = await Promise.all([
+      const [profileData, followersTotal, followingTotal, posts] = await Promise.all([
         getUserProfile(viewedUserId),
         getFollowersCount(viewedUserId),
         getFollowingCount(viewedUserId),
+        fetchPostsByCreatorId(viewedUserId),
       ]);
 
       setProfile(profileData);
       setFollowersCount(followersTotal);
       setFollowingCount(followingTotal);
+      setUserPosts(posts);
 
       if (currentUserId && currentUserId !== viewedUserId) {
         const followState = await isFollowing(currentUserId, viewedUserId);
@@ -119,6 +142,18 @@ export default function OtherProfileScreen() {
       Alert.alert('Error', 'Could not update follow status.');
     } finally {
       setFollowButtonLoading(false);
+    }
+  }
+
+  async function handleStartMessage() {
+    if (!currentUserId || !viewedUserId || isOwnProfile) return;
+
+    try {
+      const chatId = await getOrCreateDirectMessageChat(currentUserId, viewedUserId);
+      router.push(`/home/group-chats/${chatId}`);
+    } catch (error) {
+      console.error('Error starting message thread:', error);
+      Alert.alert('Error', error?.message || 'Could not open chat.');
     }
   }
 
@@ -238,46 +273,120 @@ export default function OtherProfileScreen() {
     );
   }
 
+  if (!viewedUserId) {
+    return (
+      <View style={styles.missingStateContainer}>
+        <Text style={styles.missingStateText}>Click on a username on a post to access other profiles</Text>
+        <Pressable style={styles.missingStateButton} onPress={() => router.back()}>
+          <Text style={styles.missingStateButtonText}>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
-      <View style={styles.container}>
-        <Image
-            source={require('@/assets/images/default_user.jpg')}
-            style={styles.avatar}
+      <View style={styles.root}>
+        <ImageBackground
+          source={require('@/assets/images/goal_bg.png')}
+          resizeMode="cover"
+          style={styles.backgroundLayer}
         />
-
-        <Text style={styles.name}>{displayName}</Text>
-        <Text style={styles.subtitle}>{profile?.bio || 'Crafter profile'}</Text>
-
-        <View style={styles.statsRow}>
-          <Pressable style={styles.statCard} onPress={openFollowersModal}>
-            <Text style={styles.statNumber}>{followersCount}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
-          </Pressable>
-
-          <Pressable style={styles.statCard} onPress={openFollowingModal}>
-            <Text style={styles.statNumber}>{followingCount}</Text>
-            <Text style={styles.statLabel}>Following</Text>
-          </Pressable>
-        </View>
-
-        {!isOwnProfile && (
+        <View style={styles.foreground}>
+          <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
             <Pressable
-                style={[
-                  styles.followButton,
-                  currentlyFollowing ? styles.followingButton : styles.followNowButton,
-                ]}
-                onPress={handleToggleFollow}
-                disabled={followButtonLoading}
+              style={styles.backButton}
+              onPress={() => router.back()}
+              hitSlop={10}
             >
-              <Text style={styles.followButtonText}>
-                {followButtonLoading
-                    ? 'Loading...'
-                    : currentlyFollowing
+              <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.profileHeader}>
+              <Image
+                source={
+                  profile?.avatar_url
+                    ? { uri: profile.avatar_url }
+                    : require('@/assets/images/default_user.jpg')
+                }
+                style={styles.avatar}
+              />
+
+              <View style={styles.profileInfo}>
+                <Text style={styles.name}>{displayName || userName}</Text>
+                <View style={styles.statsRow}>
+                  <Pressable style={styles.statCell} onPress={openFollowersModal}>
+                    <Text style={styles.statLabel}>Followers</Text>
+                    <Text style={styles.statNumber}>{followersCount}</Text>
+                  </Pressable>
+                  <Pressable style={styles.statCell} onPress={openFollowingModal}>
+                    <Text style={styles.statLabel}>Following</Text>
+                    <Text style={styles.statNumber}>{followingCount}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <Text style={styles.subtitle}>{profile?.bio || 'Hello, I am username and I love making crafts'}</Text>
+
+            {!isOwnProfile && (
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={[
+                    styles.profileActionButton,
+                    currentlyFollowing ? styles.followingButton : styles.followNowButton,
+                  ]}
+                  onPress={handleToggleFollow}
+                  disabled={followButtonLoading}
+                >
+                  <Text style={styles.followButtonText}>
+                    {followButtonLoading
+                      ? 'Loading...'
+                      : currentlyFollowing
                         ? 'Unfollow'
                         : 'Follow'}
-              </Text>
-            </Pressable>
-        )}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.profileActionButton} onPress={handleStartMessage}>
+                  <Text style={styles.followButtonText}>Message</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.grid}>
+              {userPosts.length > 0 ? (
+                userPosts.map((post) => (
+                  <Pressable
+                    key={post.id}
+                    style={styles.postTile}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/home/explore/[id]',
+                        params: {
+                          id: post.id,
+                          fromUserId: viewedUserId,
+                        },
+                      })
+                    }
+                  >
+                    {post.imageUrl ? (
+                      <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
+                    ) : (
+                      <Text style={styles.postPlaceholderText}>placeholder</Text>
+                    )}
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.noPostsText}>No posts yet.</Text>
+              )}
+            </View>
+          </ScrollView>
+        </View>
 
         <Modal
             visible={followersModalVisible}
@@ -343,77 +452,178 @@ export default function OtherProfileScreen() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#f2e4e4',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  container: {
+  missingStateContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#f2e4e4',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    gap: 14,
+  },
+  missingStateText: {
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(20, 17, 24),
+    textAlign: 'center',
+  },
+  missingStateButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  missingStateButtonText: {
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 14, 19),
+  },
+  root: {
+    flex: 1,
+    backgroundColor: '#f2e4e4',
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  foreground: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  topBar: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 10,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: responsive(48, 36, 60),
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  profileInfo: {
+    flex: 1,
+    marginLeft: 14,
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 16,
+    width: responsive(96, 82, 110),
+    height: responsive(96, 82, 110),
+    borderRadius: responsive(48, 41, 55),
+    backgroundColor: '#D2D2D2',
   },
   name: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontSize: responsive(38, 30, 44),
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
+    marginTop: 14,
+    marginBottom: 18,
+    fontSize: responsive(14, 13, 17),
+    lineHeight: responsive(20, 18, 24),
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 16,
-    marginBottom: 20,
+    gap: 24,
+    marginTop: 6,
   },
-  statCard: {
-    minWidth: 120,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+  statCell: {
+    minWidth: 84,
   },
   statNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: responsive(34, 28, 40),
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
   },
   statLabel: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
+    fontSize: responsive(13, 12, 16),
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
   },
-  followButton: {
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 14,
+    marginBottom: 18,
+  },
+  profileActionButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 999,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A58E86',
+    backgroundColor: '#e8d5d5',
   },
   followNowButton: {
-    backgroundColor: '#111827',
+    backgroundColor: '#E7D4D4',
   },
   followingButton: {
-    backgroundColor: '#7C5C5C',
+    backgroundColor: '#D7BFBF',
   },
   followButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(17, 15, 20),
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: COLUMN_GAP,
+    marginBottom: 20,
+  },
+  postTile: {
+    width: COL_WIDTH,
+    height: COL_WIDTH * 0.85,
+    borderRadius: responsive(12, 10, 14),
+    backgroundColor: '#dcd0d0',
+    borderWidth: 1,
+    borderColor: '#bda9a9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  postImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postPlaceholderText: {
+    fontFamily: 'Gaegu-Bold',
+    color: DARK,
+    fontSize: responsive(14, 12, 16),
+  },
+  noPostsText: {
+    width: '100%',
+    textAlign: 'center',
+    color: DARK,
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 15, 21),
+    marginTop: 8,
   },
   modalOverlay: {
     flex: 1,

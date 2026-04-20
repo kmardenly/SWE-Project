@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useUser } from '@/context/UserContext';
 
 import { fetchGroupChats } from '@/lib/groupChats.service';
 
@@ -27,18 +28,19 @@ function chatMatches(chat, query) {
 }
 
 export default function GroupChatsScreen() {
+  const { user } = useUser();
   const [query, setQuery] = useState('');
   const [groupChats, setGroupChats] = useState([]);
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChats().then((data) => {
+    fetchGroupChats(user?.id).then((data) => {
       if (mounted) setGroupChats(data);
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.id]);
 
   const filteredChats = useMemo(
     () => groupChats.filter((chat) => chatMatches(chat, query)),

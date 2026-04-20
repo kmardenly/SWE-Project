@@ -1,6 +1,55 @@
 import { supabase } from '../lib/supabaseClient';
 
-function mapJoinedUser(item, joinedUser, fallbackUserId) {
+function parseBucketAndPath(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return null;
+
+    const storagePathPattern = /\/storage\/v1\/object\/(?:public|authenticated|sign)\/([^/?#]+)\/([^?#]+)/;
+    const storageMatch = normalized.match(storagePathPattern);
+    if (storageMatch) {
+        const bucket = storageMatch[1];
+        const objectPath = decodeURIComponent(storageMatch[2]);
+        if (bucket && objectPath) return { bucket, objectPath };
+    }
+
+    const slashIndex = normalized.indexOf('/');
+    if (slashIndex > 0) {
+        const bucket = normalized.slice(0, slashIndex);
+        const objectPath = normalized.slice(slashIndex + 1);
+        if (bucket && objectPath && !bucket.includes(':')) {
+            return { bucket, objectPath };
+        }
+    }
+
+    return null;
+}
+
+export async function resolveAvatarUrl(rawUrl) {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+    }
+
+    const location = parseBucketAndPath(value);
+    if (!location || !supabase) return value;
+
+    const { bucket, objectPath } = location;
+    const { data: signedData } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(objectPath, 60 * 60);
+
+    if (signedData?.signedUrl) return signedData.signedUrl;
+
+    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    if (publicData?.publicUrl) return publicData.publicUrl;
+
+    return value;
+}
+
+async function mapJoinedUser(item, joinedUser, fallbackUserId) {
+    const avatarUrl = await resolveAvatarUrl(joinedUser?.avatar_url || '');
     return {
         user_id: joinedUser?.user_id || fallbackUserId,
         username: joinedUser?.username || '',
@@ -8,7 +57,7 @@ function mapJoinedUser(item, joinedUser, fallbackUserId) {
         first_name: joinedUser?.first_name || '',
         last_name: joinedUser?.last_name || '',
         bio: joinedUser?.bio || '',
-        avatar_url: joinedUser?.avatar_url || '',
+        avatar_url: avatarUrl,
         level: joinedUser?.level ?? null,
         email: joinedUser?.email || '',
         created_at: item.created_at,
@@ -67,8 +116,10 @@ export async function getFollowersList(userId) {
 
     if (error) throw error;
 
-    return (data || []).map((item) =>
-        mapJoinedUser(item, item.users, item.follower_id)
+    return Promise.all(
+        (data || []).map((item) =>
+            mapJoinedUser(item, item.users, item.follower_id)
+        )
     );
 }
 
@@ -94,8 +145,10 @@ export async function getFollowingList(userId) {
 
     if (error) throw error;
 
-    return (data || []).map((item) =>
-        mapJoinedUser(item, item.users, item.followed_id)
+    return Promise.all(
+        (data || []).map((item) =>
+            mapJoinedUser(item, item.users, item.followed_id)
+        )
     );
 }
 
@@ -171,5 +224,8 @@ export async function getUserProfile(userId) {
         .maybeSingle();
 
     if (error) throw error;
-    return data;
+    return {
+        ...(data || {}),
+        avatar_url: await resolveAvatarUrl(data?.avatar_url || ''),
+    };
 }

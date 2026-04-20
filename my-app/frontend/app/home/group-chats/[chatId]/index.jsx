@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat } from '@/lib/groupChats.service';
+import { fetchGroupChat, sendGroupMessage } from '@/lib/groupChats.service';
 import {
   pickChatImageFromLibrary,
   resolveChatImageUriForMessage,
@@ -29,15 +30,17 @@ const DARK = '#5c3d3d';
 
 export default function GroupChatDetailsScreen() {
   const { chatId } = useLocalSearchParams();
+  const { user } = useUser();
   const [messageText, setMessageText] = useState('');
   const [pendingImage, setPendingImage] = useState(null);
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [chat, setChat] = useState(null);
   const [sentMessages, setSentMessages] = useState([]);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    fetchGroupChat(chatId).then((data) => {
+    fetchGroupChat(chatId, user?.id).then((data) => {
       if (!mounted) return;
       if (!data) {
         router.replace('/home/group-chats');
@@ -49,7 +52,7 @@ export default function GroupChatDetailsScreen() {
     return () => {
       mounted = false;
     };
-  }, [chatId]);
+  }, [chatId, user?.id]);
 
   if (!chat) return null;
 
@@ -73,25 +76,39 @@ export default function GroupChatDetailsScreen() {
 
   const handleSendMessage = async () => {
     if (!messageText.trim() && !pendingImage) return;
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to send messages.');
+      return;
+    }
+    if (!chat?.channelId) {
+      Alert.alert('Channel unavailable', 'Unable to send in this chat.');
+      return;
+    }
+    if (sending) return;
 
     const resolvedImageUri = pendingImage
       ? await resolveChatImageUriForMessage(pendingImage)
       : null;
 
-    setSentMessages((prev) => {
-      const next = [
-        ...prev,
-        {
-          id: `local-${Date.now()}`,
-          author: 'You',
-          text: messageText.trim() || ' ',
-          image: resolvedImageUri,
-        },
-      ];
-      return next;
-    });
-    setMessageText('');
-    setPendingImage(null);
+    try {
+      setSending(true);
+      const created = await sendGroupMessage({
+        channelId: chat.channelId,
+        userId: user.id,
+        text: messageText.trim(),
+        image: resolvedImageUri,
+      });
+
+      if (created) {
+        setSentMessages((prev) => [...prev, created]);
+      }
+      setMessageText('');
+      setPendingImage(null);
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not send message.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -149,7 +166,7 @@ export default function GroupChatDetailsScreen() {
             placeholder="Send a message..."
             placeholderTextColor="#9b8080"
           />
-            <Pressable onPress={handleSendMessage} style={styles.sendButton} hitSlop={8}>
+            <Pressable onPress={handleSendMessage} style={styles.sendButton} hitSlop={8} disabled={sending}>
               <Ionicons name="send" size={20} color="#fff" />
             </Pressable>
           </View>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Image, TextInput, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 export default function PostCard({ post }) {
   const [commentText, setCommentText] = useState('');
@@ -18,6 +19,14 @@ export default function PostCard({ post }) {
     setCommentText('');
   };
 
+  const openUserProfile = (targetUserId) => {
+    if (!targetUserId) return;
+    router.push({
+      pathname: '/home/other.profile',
+      params: { userId: targetUserId },
+    });
+  };
+
   return (
     <View style={styles.card}>
       {/* Post Header */}
@@ -29,7 +38,9 @@ export default function PostCard({ post }) {
             <Ionicons name="person-circle-outline" size={38} color="#888" />
           )}
         </View>
-        <Text style={styles.postUsername}>{post.username}</Text>
+        <Pressable onPress={() => openUserProfile(post.userId)}>
+          <Text style={styles.postUsername}>{post.username}</Text>
+        </Pressable>
       </View>
 
       {/* Post Image */}
@@ -88,7 +99,9 @@ export default function PostCard({ post }) {
           </View>
           <View style={styles.commentBody}>
             <View style={styles.commentMeta}>
-              <Text style={styles.commentUsername}>{comment.username}</Text>
+              <Pressable onPress={() => openUserProfile(comment.userId)}>
+                <Text style={styles.commentUsername}>{comment.username}</Text>
+              </Pressable>
               <Text style={styles.commentTime}>  {comment.time}</Text>
             </View>
             <Text style={styles.commentText}>{comment.text}</Text>
