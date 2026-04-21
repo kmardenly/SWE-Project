@@ -14,8 +14,9 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import  {useUser} from '@/context/UserContext';
-import {supabase} from "@/lib/supabaseClient";
+import { useUser } from '@/context/UserContext';
+import { supabase } from '@/lib/supabaseClient';
+import { syncPostTags } from '@/FE-services/postTags.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -23,7 +24,7 @@ const BASE_WIDTH = 390;
 const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 
-const CRAFT_TYPES = ['test','knitting', 'crochet', 'embroidery', 'weaving', 'sewing', 'other'];
+const CRAFT_TYPES = ['test', 'knitting', 'crochet', 'embroidery', 'weaving', 'sewing', 'other'];
 const PINK = '#c49a9a';
 const CREAM = '#f5f0e8';
 const DARK = '#5c3d3d';
@@ -56,8 +57,8 @@ async function uploadPostImageToStorage({ uri, base64, userId }) {
   const filePath = `${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 
   const uploadBody = base64
-    ? base64ToUint8Array(base64)
-    : await (async () => {
+      ? base64ToUint8Array(base64)
+      : await (async () => {
         const response = await fetch(uri);
         const blob = await response.blob();
         if (!blob || typeof blob.size !== 'number' || blob.size <= 0) {
@@ -66,7 +67,11 @@ async function uploadPostImageToStorage({ uri, base64, userId }) {
         return blob;
       })();
 
-  if (!uploadBody || (uploadBody.byteLength != null && uploadBody.byteLength <= 0) || (uploadBody.size != null && uploadBody.size <= 0)) {
+  if (
+      !uploadBody ||
+      (uploadBody.byteLength != null && uploadBody.byteLength <= 0) ||
+      (uploadBody.size != null && uploadBody.size <= 0)
+  ) {
     throw new Error('Selected image appears empty. Please choose a different image.');
   }
 
@@ -92,7 +97,7 @@ async function uploadPostImageToStorage({ uri, base64, userId }) {
 }
 
 export default function CreatePostScreen() {
-  const {user} = useUser();
+  const { user } = useUser();
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [craftType, setCraftType] = useState('');
@@ -150,10 +155,14 @@ export default function CreatePostScreen() {
     }
 
     try {
+      const resolvedCraftType = craftType === 'other'
+          ? customCraftType.trim()
+          : craftType;
+
       const content = JSON.stringify({
         title: title.trim(),
         caption: caption.trim(),
-        craftType: craftType === 'other' ? customCraftType.trim() : craftType,
+        craftType: resolvedCraftType,
         tags,
       });
 
@@ -193,165 +202,168 @@ export default function CreatePostScreen() {
 
       if (mediaError) throw mediaError;
 
+      await syncPostTags(post.post_id, tags, resolvedCraftType);
+
       Alert.alert('Posted!');
       router.back();
     } catch (error) {
       Alert.alert('Unable to post', error?.message || 'Please try again.');
     }
-
   };
 
   return (
-    <ImageBackground
-      source={require('@/assets/images/post_background.png')}
-      resizeMode="cover"
-      style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
-        </Pressable>
-        <View style={{ width: 36 }} />
-      </View>
-
-      <View style={styles.scrollArea}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled">
-
-        {/* Image Picker */}
-        <View style={styles.imagePicker}>
-          {selectedImageUri ? (
-            <>
-              <Image source={{ uri: selectedImageUri }} style={styles.selectedImage} resizeMode="cover" />
-              <Pressable
-                style={({ pressed }) => [styles.editImageButton, pressed && styles.editImageButtonPressed]}
-                onPress={handlePickImage}>
-                <Text style={styles.editImageButtonText}>Edit Photo</Text>
-              </Pressable>
-            </>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [styles.addImageButton, pressed && styles.addImageButtonPressed]}
-              onPress={handlePickImage}>
-              <Text style={styles.addImageButtonText}>Add Image</Text>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Title */}
-        <View style={styles.field}>
-          <TextInput
-            style={styles.singleLineInput}
-            placeholder="title: [50 char maximum]"
-            placeholderTextColor="#b09090"
-            value={title}
-            onChangeText={(t) => setTitle(t.slice(0, 50))}
-            maxLength={50}
-          />
-        </View>
-
-        {/* Caption */}
-        <View style={styles.field}>
-          <TextInput
-            style={styles.multiLineInput}
-            placeholder="caption: [200 char maximum]"
-            placeholderTextColor="#b09090"
-            value={caption}
-            onChangeText={(t) => setCaption(t.slice(0, 200))}
-            maxLength={200}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Craft Type */}
-        <View style={styles.field}>
-          <Pressable
-            style={styles.singleLineInput}
-            onPress={() => setCraftOpen((o) => !o)}>
-            <Text style={craftType ? styles.inputText : styles.placeholderText}>
-              {craftType === 'other'
-                ? `other: ${customCraftType || ''}`
-                : craftType || 'craft type:'}
-            </Text>
-            <Ionicons
-              name={craftOpen ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color="#b09090"
-            />
+      <ImageBackground
+          source={require('@/assets/images/post_background.png')}
+          resizeMode="cover"
+          style={styles.container}
+      >
+        <View style={styles.header}>
+          <Pressable style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
           </Pressable>
-          {craftOpen && (
-            <View style={styles.dropdown}>
-              {CRAFT_TYPES.map((ct) => (
-                <Pressable
-                  key={ct}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setCraftType(ct);
-                    if (ct !== 'other') {
-                      setCustomCraftType('');
-                    }
-                    setCraftOpen(false);
-                  }}>
-                  <Text style={[styles.dropdownText, craftType === ct && styles.dropdownSelected]}>
-                    {ct}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          {craftType === 'other' && (
-            <TextInput
-              style={[styles.singleLineInput, styles.otherInput]}
-              placeholder="type your craft category..."
-              placeholderTextColor="#b09090"
-              value={customCraftType}
-              onChangeText={setCustomCraftType}
-              maxLength={30}
-            />
-          )}
+          <View style={{ width: 36 }} />
         </View>
 
-        {/* Tags */}
-        <View style={styles.tagsField}>
-          <View style={styles.tagsRow}>
-            <Text style={styles.tagsLabel}>tags:</Text>
-            <View style={styles.tagsList}>
-              {tags.map((tag) => (
-                <Pressable key={tag} style={styles.tag} onPress={() => removeTag(tag)}>
-                  <Text style={styles.tagText}>x {tag}</Text>
-                </Pressable>
-              ))}
-              <Pressable style={styles.addTagBtn} onPress={addTag}>
-                <Text style={styles.addTagText}>+ add tag</Text>
+        <View style={styles.scrollArea}>
+          <ScrollView
+              contentContainerStyle={styles.scroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.imagePicker}>
+              {selectedImageUri ? (
+                  <>
+                    <Image source={{ uri: selectedImageUri }} style={styles.selectedImage} resizeMode="cover" />
+                    <Pressable
+                        style={({ pressed }) => [styles.editImageButton, pressed && styles.editImageButtonPressed]}
+                        onPress={handlePickImage}
+                    >
+                      <Text style={styles.editImageButtonText}>Edit Photo</Text>
+                    </Pressable>
+                  </>
+              ) : (
+                  <Pressable
+                      style={({ pressed }) => [styles.addImageButton, pressed && styles.addImageButtonPressed]}
+                      onPress={handlePickImage}
+                  >
+                    <Text style={styles.addImageButtonText}>Add Image</Text>
+                  </Pressable>
+              )}
+            </View>
+
+            <View style={styles.field}>
+              <TextInput
+                  style={styles.singleLineInput}
+                  placeholder="title: [50 char maximum]"
+                  placeholderTextColor="#b09090"
+                  value={title}
+                  onChangeText={(t) => setTitle(t.slice(0, 50))}
+                  maxLength={50}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <TextInput
+                  style={styles.multiLineInput}
+                  placeholder="caption: [200 char maximum]"
+                  placeholderTextColor="#b09090"
+                  value={caption}
+                  onChangeText={(t) => setCaption(t.slice(0, 200))}
+                  maxLength={200}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Pressable
+                  style={styles.singleLineInput}
+                  onPress={() => setCraftOpen((o) => !o)}
+              >
+                <Text style={craftType ? styles.inputText : styles.placeholderText}>
+                  {craftType === 'other'
+                      ? `other: ${customCraftType || ''}`
+                      : craftType || 'craft type:'}
+                </Text>
+                <Ionicons
+                    name={craftOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color="#b09090"
+                />
               </Pressable>
+
+              {craftOpen && (
+                  <View style={styles.dropdown}>
+                    {CRAFT_TYPES.map((ct) => (
+                        <Pressable
+                            key={ct}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setCraftType(ct);
+                              if (ct !== 'other') {
+                                setCustomCraftType('');
+                              }
+                              setCraftOpen(false);
+                            }}
+                        >
+                          <Text style={[styles.dropdownText, craftType === ct && styles.dropdownSelected]}>
+                            {ct}
+                          </Text>
+                        </Pressable>
+                    ))}
+                  </View>
+              )}
+
+              {craftType === 'other' && (
+                  <TextInput
+                      style={[styles.singleLineInput, styles.otherInput]}
+                      placeholder="type your craft category..."
+                      placeholderTextColor="#b09090"
+                      value={customCraftType}
+                      onChangeText={setCustomCraftType}
+                      maxLength={30}
+                  />
+              )}
             </View>
-          </View>
-          <TextInput
-            style={styles.tagInput}
-            placeholder="new tag..."
-            placeholderTextColor="#b09090"
-            value={tagInput}
-            onChangeText={setTagInput}
-            onSubmitEditing={addTag}
-            returnKeyType="done"
-          />
+
+            <View style={styles.tagsField}>
+              <View style={styles.tagsRow}>
+                <Text style={styles.tagsLabel}>tags:</Text>
+                <View style={styles.tagsList}>
+                  {tags.map((tag) => (
+                      <Pressable key={tag} style={styles.tag} onPress={() => removeTag(tag)}>
+                        <Text style={styles.tagText}>x {tag}</Text>
+                      </Pressable>
+                  ))}
+                  <Pressable style={styles.addTagBtn} onPress={addTag}>
+                    <Text style={styles.addTagText}>+ add tag</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <TextInput
+                  style={styles.tagInput}
+                  placeholder="new tag..."
+                  placeholderTextColor="#b09090"
+                  value={tagInput}
+                  onChangeText={setTagInput}
+                  onSubmitEditing={addTag}
+                  returnKeyType="done"
+              />
+            </View>
+          </ScrollView>
         </View>
 
-        </ScrollView>
-      </View>
-
-      <View style={styles.staticShareContainer}>
-        <Pressable
-          style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
-          onPress={handleShare}>
-          <Text style={styles.shareText}>share!</Text>
-        </Pressable>
-      </View>
-    </ImageBackground>
+        <View style={styles.staticShareContainer}>
+          <Pressable
+              style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
+              onPress={handleShare}
+          >
+            <Text style={styles.shareText}>share!</Text>
+          </Pressable>
+        </View>
+      </ImageBackground>
   );
 }
 
@@ -388,7 +400,6 @@ const styles = StyleSheet.create({
     color: DARK,
     letterSpacing: 1,
   },
-  
   scroll: {
     paddingHorizontal: responsive(20, 14, 28),
     paddingBottom: 10,
@@ -398,8 +409,6 @@ const styles = StyleSheet.create({
   scrollArea: {
     height: '68%',
   },
-
-  /* Image Picker */
   imagePicker: {
     backgroundColor: '#F0D7D7',
     borderRadius: 16,
@@ -468,8 +477,6 @@ const styles = StyleSheet.create({
     fontSize: responsive(22, 18, 26),
     color: DARK,
   },
-
-  /* Fields */
   field: {
     position: 'relative',
   },
@@ -514,8 +521,6 @@ const styles = StyleSheet.create({
     color: '#b09090',
     flex: 1,
   },
-
-  /* Dropdown */
   dropdown: {
     backgroundColor: '#fff8f8',
     borderRadius: 10,
@@ -540,8 +545,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     color: PINK,
   },
-
-  /* Tags */
   tagsField: {
     backgroundColor: '#F7F0E0',
     borderRadius: 12,
@@ -597,8 +600,6 @@ const styles = StyleSheet.create({
     fontSize: responsive(18, 16, 21),
     color: DARK,
   },
-
-  /* Share */
   staticShareContainer: {
     position: 'absolute',
     left: 0,
