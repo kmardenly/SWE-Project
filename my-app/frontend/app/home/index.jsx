@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {homeStyles} from '../../constants/homeStyles';
 import { router } from 'expo-router';
@@ -42,12 +42,42 @@ export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [notifVisible, setNotifVisible] = useState(false);
   const [streakVisible, setStreakVisible] = useState(false);
+  const [profileUsername, setProfileUsername] = useState(null);
 
-  let user_text = ""
-  if (user !== null && user !== undefined){
-    user_text = user.user_metadata?.display_name || user.email || '<User_Placeholder>'
+  useEffect(() => {
+    if (!user?.id || !supabase) {
+      setProfileUsername(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('username')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!cancelled) {
+        setProfileUsername(data?.username?.trim() || null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  let user_text = '';
+  if (user !== null && user !== undefined) {
+    user_text =
+      profileUsername ||
+      user.user_metadata?.username ||
+      user.email?.split('@')[0] ||
+      '<User_Placeholder>';
   } else {
-    user_text = "<User_Placeholder>"
+    user_text = '<User_Placeholder>';
   }
 
   return (

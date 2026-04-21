@@ -4,6 +4,8 @@ import { router } from 'expo-router';
 import { supabase } from '@/lib/supabaseClient';
 import PicnicBackground from '../components/PicnicBackground';
  
+const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -14,16 +16,25 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [userNameAvailable, setUserNameAvailable] = useState(null);
 
+  const normalizedUsernamePreview = userName.trim().toLowerCase();
+  const usernamePatternOk = USERNAME_REGEX.test(normalizedUsernamePreview);
+
 const checkUserName = async (name) => {
-  if (name.trim().length < 3) {
+  const normalized = name.trim().toLowerCase();
+  if (!USERNAME_REGEX.test(normalized)) {
+    setUserNameAvailable(null);
+    return;
+  }
+
+  if (!supabase) {
     setUserNameAvailable(null);
     return;
   }
 
   const { data } = await supabase
     .from('users')
-    .select('display_name')
-    .eq('display_name', name.trim())
+    .select('username')
+    .eq('username', normalized)
     .maybeSingle();
 
   setUserNameAvailable(!data); // true if no match found
@@ -32,6 +43,22 @@ const checkUserName = async (name) => {
   const handleRegister = async () => {
     if (!email.trim() || !password.trim()) {
       setError('Please enter both email and password.');
+      return;
+    }
+
+    if (!userName.trim()) {
+      setError('Please choose a username.');
+      return;
+    }
+
+    const normalizedUsername = userName.trim().toLowerCase();
+    if (!USERNAME_REGEX.test(normalizedUsername)) {
+      setError('Username must be 3-20 characters: lowercase letters, numbers, or underscores.');
+      return;
+    }
+
+    if (userNameAvailable !== true) {
+      setError('Please choose an available username.');
       return;
     }
 
@@ -48,31 +75,40 @@ const checkUserName = async (name) => {
     setError('');
     setIsLoading(true);
 
+    const displayNameFromName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
+      options: {
+        data: {
+          username: normalizedUsername,
+        },
+      },
     });
 
-    setIsLoading(false);
-
     if (signUpError) {
+      setIsLoading(false);
       setError(signUpError.message);
       return;
     }
 
-    if (!userNameAvailable) {
-        setError('Please choose an available username.');
-          return;
-}
+    if (!data?.user?.id) {
+      setIsLoading(false);
+      setError('Could not create account. Check your email confirmation settings.');
+      return;
+    }
 
     const { error: profileError } = await supabase
-    .from('users')
-    .update({
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      display_name: userName.trim(),
-    })
-    .eq('user_id', data.user.id);
+      .from('users')
+      .update({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        username: normalizedUsername,
+        ...(displayNameFromName ? { display_name: displayNameFromName } : {}),
+        email: email.trim(),
+      })
+      .eq('user_id', data.user.id);
 
     setIsLoading(false);
 
@@ -118,7 +154,7 @@ const checkUserName = async (name) => {
         placeholderTextColor="#888"
         style={styles.input}
       />
-      {userName.length >= 3 && (
+      {usernamePatternOk && userNameAvailable !== null && (
         <Text style={{ 
           color: userNameAvailable ? 'green' : 'red', 
           alignSelf: 'flex-start',

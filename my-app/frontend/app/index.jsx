@@ -6,14 +6,14 @@ import { supabase } from '@/lib/supabaseClient';
 import PicnicBackground from '../components/PicnicBackground';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password.');
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter your username and password.');
       return;
     }
 
@@ -25,8 +25,29 @@ export default function LoginScreen() {
     setError('');
     setIsLoading(true);
 
+    const loginUsername = username.trim().toLowerCase();
+
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('email')
+      .eq('username', loginUsername)
+      .maybeSingle();
+
+    if (profileError) {
+      setIsLoading(false);
+      setError(profileError.message);
+      return;
+    }
+
+    const emailForAuth = profile?.email?.trim();
+    if (!emailForAuth) {
+      setIsLoading(false);
+      setError('No account found for that username.');
+      return;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: emailForAuth,
       password,
     });
 
@@ -53,11 +74,11 @@ export default function LoginScreen() {
               <Text style={styles.title}>LOGIN</Text>
 
               <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="User"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="Username"
                 autoCapitalize="none"
-                keyboardType="email-address"
+                autoCorrect={false}
                 placeholderTextColor="#888"
                 style={styles.input}
               />
