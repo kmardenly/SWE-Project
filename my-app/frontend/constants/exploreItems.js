@@ -576,3 +576,28 @@ export async function setPostSaved(postId, userId, shouldSave) {
 
   if (deleteError) throw deleteError;
 }
+
+export async function deletePostById(postId, userId) {
+  if (!supabase || !postId || !userId) {
+    throw new Error('Missing post or user information for delete action.');
+  }
+
+  const { data: post, error: readError } = await supabase
+    .from('posts')
+    .select('post_id, creator_id, deleted_at')
+    .eq('post_id', postId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!post) throw new Error('Post not found.');
+  if (post.creator_id !== userId) {
+    throw new Error('You can only delete your own posts.');
+  }
+  if (post.deleted_at) return;
+
+  const { error: updateError } = await supabase
+    .from('posts')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('post_id', postId)
+    .eq('creator_id', userId);
+  if (updateError) throw updateError;
+}
