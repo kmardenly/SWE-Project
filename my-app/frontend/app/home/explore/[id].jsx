@@ -17,6 +17,7 @@ import { useUser } from '@/context/UserContext';
 
 import {
   createPostComment,
+  deletePostById,
   fetchExploreItemById,
   getPostComments,
   getPostSaveSummary,
@@ -59,6 +60,7 @@ export default function ExplorePhotoScreen() {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [deletingPost, setDeletingPost] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -178,6 +180,40 @@ export default function ExplorePhotoScreen() {
     }
   }
 
+  async function handleDeletePost() {
+    if (!item?.id || !user?.id || deletingPost) return;
+    Alert.alert('Delete post', 'Are you sure you want to delete this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setDeletingPost(true);
+            await deletePostById(item.id, user.id);
+            handleBackPress();
+          } catch (error) {
+            Alert.alert('Error', error?.message || 'Could not delete this post.');
+          } finally {
+            setDeletingPost(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  function handleOpenPostMenu() {
+    if (!isOwnPost) return;
+    Alert.alert('Post options', 'Choose an action', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: deletingPost ? 'Deleting...' : 'Delete post',
+        style: 'destructive',
+        onPress: handleDeletePost,
+      },
+    ]);
+  }
+
   if (loading || !item) return null;
 
   const photoWidth = SCREEN_WIDTH - H_PAD * 2;
@@ -196,6 +232,7 @@ export default function ExplorePhotoScreen() {
           postDate.getFullYear()
         ).slice(-2)}`
       : '';
+  const isOwnPost = !!user?.id && item.creatorId === user.id;
   const handleBackPress = () => {
     if (fromRoute === 'home') {
       router.replace({
@@ -243,6 +280,19 @@ export default function ExplorePhotoScreen() {
                 hitSlop={12}>
                 <Ionicons name="chevron-back" size={responsive(28, 24, 32)} color={DARK} />
               </Pressable>
+              <View style={styles.topBarSpacer} />
+              {isOwnPost ? (
+                <Pressable
+                  onPress={handleOpenPostMenu}
+                  style={({ pressed }) => [styles.moreBtn, pressed && styles.backBtnPressed]}
+                  hitSlop={12}
+                  disabled={deletingPost}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={responsive(24, 20, 30)} color={DARK} />
+                </Pressable>
+              ) : (
+                <View style={styles.topBarSpacer} />
+              )}
             </View>
 
             <ScrollView
@@ -396,9 +446,13 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
     paddingHorizontal: H_PAD,
     paddingBottom: 8,
+  },
+  topBarSpacer: {
+    width: 40,
+    height: 40,
   },
   backBtn: {
     width: 40,
@@ -414,6 +468,19 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   backBtnPressed: { opacity: 0.85 },
+  moreBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
 
   scroll: { flex: 1 },
   scrollContent: {
