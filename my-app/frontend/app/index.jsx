@@ -113,7 +113,7 @@ export default function LoginScreen() {
 
           <View style={styles.skipContainer}>
             <Pressable onPress={() => router.replace('/home')}>
-              <Text style={styles.skipText}>Skip Login (dev mode)</Text>
+              <Text style={styles.skipText}>Guest Login</Text>
             </Pressable>
           </View>
 
