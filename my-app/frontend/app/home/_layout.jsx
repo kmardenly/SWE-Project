@@ -47,13 +47,6 @@ export default function HomeTabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="post"
-          options={{
-            title: 'Post',
-            tabBarIcon: ({ color }) => <IconSymbol size={28} name="square.and.pencil" color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="projects"
           options={{
             href: null,

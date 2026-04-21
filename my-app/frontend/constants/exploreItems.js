@@ -610,6 +610,14 @@ export async function deletePostById(postId, userId) {
     throw new Error('Missing post or user information for delete action.');
   }
 
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+
+  const authUserId = authData?.user?.id || null;
+  if (!authUserId) {
+    throw new Error('No active auth session. Please log in again and retry.');
+  }
+
   const { data: post, error: readError } = await supabase
     .from('posts')
     .select('post_id, creator_id, deleted_at')
@@ -617,15 +625,28 @@ export async function deletePostById(postId, userId) {
     .maybeSingle();
   if (readError) throw readError;
   if (!post) throw new Error('Post not found.');
-  if (post.creator_id !== userId) {
+  if (post.creator_id !== authUserId) {
     throw new Error('You can only delete your own posts.');
+  }
+  if (userId !== authUserId) {
+    throw new Error('Session mismatch detected. Please sign out and sign back in.');
   }
   if (post.deleted_at) return;
 
-  const { error: updateError } = await supabase
-    .from('posts')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('post_id', postId)
-    .eq('creator_id', userId);
-  if (updateError) throw updateError;
+  const { data: softDeleted, error: rpcError } = await supabase.rpc('soft_delete_post', {
+    p_post_id: postId,
+  });
+
+  if (rpcError?.code === '42501') {
+    throw new Error(
+      `Delete blocked by Supabase RLS (post ${postId}). auth.uid=${authUserId}, creator_id=${post.creator_id}.`
+    );
+  }
+
+  if (rpcError) throw rpcError;
+  if (softDeleted === true) return;
+
+  throw new Error(
+    `Soft delete did not affect any rows (post ${postId}). auth.uid=${authUserId}, creator_id=${post.creator_id}.`
+  );
 }
