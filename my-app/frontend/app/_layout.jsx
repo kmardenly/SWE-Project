@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   postButton: {
     position: 'absolute',
     right: 18,
-    bottom: 92,
+    bottom: 110,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     paddingHorizontal: responsive(36, 28, 48),

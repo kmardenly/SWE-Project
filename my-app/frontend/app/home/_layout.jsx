@@ -1,9 +1,12 @@
 import { router, Tabs } from 'expo-router';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Image, StyleSheet, View } from 'react-native';
+
+const TAB_BAR_LABEL_ACTIVE = '#b86772';
+const TAB_BAR_LABEL_INACTIVE = '#4A3E3B';
+/** Solid base behind nav_bar_bg so scene backgrounds do not show through transparent PNG areas */
+const TAB_BAR_BASE_COLOR = '#FFF5F5';
 
 const TAB_ICONS = {
   home: {
@@ -29,21 +32,24 @@ const TAB_ICONS = {
 };
 
 export default function HomeTabsLayout() {
-  const colorScheme = useColorScheme();
-
-  const theme = Colors[colorScheme ?? 'light'];
-
   return (
     <View style={styles.container}>
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: theme.tint,
-          tabBarInactiveTintColor: theme.tabIconDefault,
+          tabBarActiveTintColor: TAB_BAR_LABEL_ACTIVE,
+          tabBarInactiveTintColor: TAB_BAR_LABEL_INACTIVE,
           headerShown: false,
           tabBarButton: (props) => <HapticTab {...props} />,
+          tabBarLabelPosition: 'below-icon',
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.tabBarLabel,
-          tabBarBackground: () => <Image source={require('@/assets/images/nav_bar_bg.png')} style={styles.tabBarBackground} />,
+          tabBarIconStyle: styles.tabBarIcon,
+          tabBarBackground: () => (
+            <View style={styles.tabBarBackgroundRoot} pointerEvents="none">
+              <View style={[styles.tabBarUnderlay, { backgroundColor: TAB_BAR_BASE_COLOR }]} />
+              <Image source={require('@/assets/images/nav_bar_bg.png')} style={styles.tabBarBackground} />
+            </View>
+          ),
         }}>
         <Tabs.Screen
           name="index"
@@ -145,6 +151,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     resizeMode: 'contain',
+    marginBottom: 5,
   },
   tabBar: {
     backgroundColor: 'transparent',
@@ -152,8 +159,14 @@ const styles = StyleSheet.create({
     elevation: 0,
     shadowOpacity: 0,
     position: 'absolute',
-    height: 96,
-    paddingTop: 10,
+    height: 98,
+    paddingTop: 30,
+  },
+  tabBarBackgroundRoot: {
+    flex: 1,
+  },
+  tabBarUnderlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
@@ -166,5 +179,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: 12,
     marginBottom: 6,
+  },
+  tabBarIcon: {
+    marginTop: 2,
   },
 });
