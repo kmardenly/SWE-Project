@@ -241,6 +241,10 @@ export default function ExplorePhotoScreen() {
       });
       return;
     }
+    if (fromRoute === 'explore') {
+      router.replace('/home/explore');
+      return;
+    }
     if (fromRoute === 'saves') {
       router.replace({
         pathname: '/home/saves',

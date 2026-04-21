@@ -43,7 +43,12 @@ function CraftCard({ item }) {
 
   return (
       <Pressable
-          onPress={() => router.push(`/home/explore/${item.id}`)}
+          onPress={() =>
+            router.push({
+              pathname: '/home/explore/[id]',
+              params: { id: item.id, fromRoute: 'explore' },
+            })
+          }
           style={({ pressed }) => [pressed && styles.cardPressed]}
       >
         <View>

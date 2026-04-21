@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -32,6 +32,11 @@ export default function HomeTabsLayout() {
           options={{
             title: 'Search',
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          }}
+          listeners={{
+            tabPress: () => {
+              router.replace('/home/explore');
+            },
           }}
         />
         <Tabs.Screen
