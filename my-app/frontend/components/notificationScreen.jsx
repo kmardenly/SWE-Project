@@ -27,7 +27,7 @@ export default function NotificationModal({ visible, onClose, notifications }) {
               ItemSeparatorComponent={() => <View style={styles.separator} />}
               renderItem={({ item }) => (
                 <View style={styles.notifRow}>
-                  <Ionicons name="ellipse" size={8} color="#6C63FF" style={{ marginTop: 4 }} />
+                  <Ionicons name="ellipse" size={8} color="#cf3a64" style={{ marginTop: 4 }} />
                   <View style={{ flex: 1, marginLeft: 8 }}>
                     <Text style={styles.notifMessage}>{item.message}</Text>
                     <Text style={styles.notifTime}>{item.time}</Text>
