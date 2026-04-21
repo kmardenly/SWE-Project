@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 
 import { fetchGroupChats } from '@/lib/groupChats.service';
@@ -32,7 +32,7 @@ export default function GroupChatsScreen() {
   const [query, setQuery] = useState('');
   const [groupChats, setGroupChats] = useState([]);
 
-  useEffect(() => {
+  const loadChats = useCallback(() => {
     let mounted = true;
     fetchGroupChats(user?.id)
       .then((data) => {
@@ -46,6 +46,13 @@ export default function GroupChatsScreen() {
       mounted = false;
     };
   }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const cleanup = loadChats();
+      return cleanup;
+    }, [loadChats])
+  );
 
   const filteredChats = useMemo(
     () => groupChats.filter((chat) => chatMatches(chat, query)),
@@ -61,7 +68,14 @@ export default function GroupChatsScreen() {
       />
 
       <View style={styles.foreground}>
-        <Text style={styles.pageTitle}>Chats</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.pageTitle}>Chats</Text>
+          <Pressable
+            style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
+            onPress={() => router.push('/home/group-chats/create')}>
+            <Text style={styles.createButtonText}>Create</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.searchShell}>
           <TextInput
@@ -82,7 +96,11 @@ export default function GroupChatsScreen() {
               key={chat.id}
               onPress={() => router.push(`/home/group-chats/${chat.id}`)}
               style={({ pressed }) => [styles.chatCard, pressed && styles.chatCardPressed]}>
-              <View style={styles.avatarDot} />
+              {chat.coverImage ? (
+                <Image source={{ uri: chat.coverImage }} style={styles.avatarDot} resizeMode="cover" />
+              ) : (
+                <View style={styles.avatarDot} />
+              )}
               <View style={styles.chatTextBlock}>
                 <Text style={styles.chatName}>{chat.name}</Text>
                 <Text numberOfLines={1} style={styles.previewText}>
@@ -117,12 +135,33 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: responsive(72, 58, 86),
   },
+  titleRow: {
+    marginHorizontal: 22,
+    marginBottom: responsive(12, 10, 18),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   pageTitle: {
-    textAlign: 'center',
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(54, 42, 60),
     color: DARK,
-    marginBottom: responsive(12, 10, 18),
+  },
+  createButton: {
+    backgroundColor: '#f5d0d0',
+    borderWidth: 1,
+    borderColor: '#caa7a7',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  createButtonPressed: {
+    opacity: 0.88,
+  },
+  createButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 26),
+    color: DARK,
   },
   searchShell: {
     marginHorizontal: 22,

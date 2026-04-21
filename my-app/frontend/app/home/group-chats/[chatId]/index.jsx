@@ -175,7 +175,11 @@ export default function GroupChatDetailsScreen() {
           showsVerticalScrollIndicator={false}>
           {sentMessages.map((message) => (
             <View key={message.id} style={styles.messageWrap}>
-              <View style={styles.avatarDot} />
+              {message.avatarUrl ? (
+                <Image source={{ uri: message.avatarUrl }} style={styles.avatarDot} resizeMode="cover" />
+              ) : (
+                <View style={styles.avatarDot} />
+              )}
               <View style={styles.messageBlock}>
                 <Text style={styles.authorText}>{message.author}</Text>
                 <Text style={styles.messageText}>{message.text}</Text>

@@ -1,5 +1,6 @@
 import { GROUP_CHATS, getGroupChatById } from '@/constants/groupChats';
 import { supabase } from '@/lib/supabaseClient';
+import { resolveAvatarUrl } from '@/lib/resolveAvatarUrl';
 
 /** Matches Postgres uuid text form so we skip Supabase for mock ids like `big-cats`. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,6 +39,77 @@ function serializeMessageContent(text, image) {
   });
 }
 
+function parseGroupMetadata(rawDescription) {
+  const fallback = {
+    description: String(rawDescription || ''),
+    image: null,
+  };
+  if (typeof rawDescription !== 'string' || !rawDescription.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(rawDescription);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        description: String(parsed.description || ''),
+        image: parsed.image || null,
+      };
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function serializeGroupMetadata(description, image) {
+  return JSON.stringify({
+    description: String(description || ''),
+    image: image || null,
+  });
+}
+
+function parseBucketAndPath(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+
+  const storagePathPattern = /\/storage\/v1\/object\/(?:public|authenticated|sign)\/([^/?#]+)\/([^?#]+)/;
+  const storageMatch = normalized.match(storagePathPattern);
+  if (storageMatch) {
+    const bucket = storageMatch[1];
+    const objectPath = decodeURIComponent(storageMatch[2]);
+    if (bucket && objectPath) return { bucket, objectPath };
+  }
+
+  const slashIndex = normalized.indexOf('/');
+  if (slashIndex > 0) {
+    const bucket = normalized.slice(0, slashIndex);
+    const objectPath = normalized.slice(slashIndex + 1);
+    if (bucket && objectPath && !bucket.includes(':')) {
+      return { bucket, objectPath };
+    }
+  }
+
+  return null;
+}
+
+async function resolveGroupImageUrl(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+
+  const location = parseBucketAndPath(value);
+  if (location && supabase) {
+    const { bucket, objectPath } = location;
+    const { data: signedData } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(objectPath, 60 * 60);
+    if (signedData?.signedUrl) return signedData.signedUrl;
+
+    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    if (publicData?.publicUrl) return publicData.publicUrl;
+  }
+
+  return value;
+}
+
 async function getUserMap(userIds) {
   if (!supabase || !userIds?.length) return new Map();
   const uniqueIds = [...new Set(userIds.filter(Boolean))];
@@ -45,7 +117,7 @@ async function getUserMap(userIds) {
 
   const { data, error } = await supabase
     .from('users')
-    .select('user_id, username, display_name')
+    .select('user_id, username, display_name, avatar_url')
     .in('user_id', uniqueIds);
   if (error) throw error;
   return new Map((data || []).map((row) => [row.user_id, row]));
@@ -77,6 +149,16 @@ export async function fetchGroupChats(currentUserId) {
   if (!supabase) return GROUP_CHATS;
 
   try {
+  if (!currentUserId) return GROUP_CHATS;
+
+  const { data: memberships, error: membershipsError } = await supabase
+    .from('group_members')
+    .select('group_id')
+    .eq('user_id', currentUserId);
+  if (membershipsError) throw membershipsError;
+  const membershipIds = new Set((memberships || []).map((row) => row.group_id));
+  if (!membershipIds.size) return GROUP_CHATS;
+
   const { data: allGroups, error: groupsError } = await supabase
     .from('groups')
     .select('group_id, name, description, updated_at')
@@ -84,24 +166,7 @@ export async function fetchGroupChats(currentUserId) {
   if (groupsError) throw groupsError;
 
   const groups = allGroups || [];
-  const publicGroups = groups.filter((group) => !String(group.name || '').startsWith('dm:'));
-
-  let userDmGroupIds = [];
-  if (currentUserId) {
-    const { data: memberships, error: membershipsError } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', currentUserId);
-    if (membershipsError) throw membershipsError;
-    const membershipIds = new Set((memberships || []).map((row) => row.group_id));
-    userDmGroupIds = groups
-      .filter((group) => String(group.name || '').startsWith('dm:') && membershipIds.has(group.group_id))
-      .map((group) => group.group_id);
-  }
-
-  const visibleGroups = groups.filter(
-    (group) => !String(group.name || '').startsWith('dm:') || userDmGroupIds.includes(group.group_id)
-  );
+  const visibleGroups = groups.filter((group) => membershipIds.has(group.group_id));
   const groupIds = visibleGroups.map((group) => group.group_id);
   if (!groupIds.length) return GROUP_CHATS;
 
@@ -154,31 +219,44 @@ export async function fetchGroupChats(currentUserId) {
     acc[row.group_id].push(user?.display_name || user?.username || 'Crafter');
     return acc;
   }, {});
+  const memberUserIdsByGroup = (memberRows || []).reduce((acc, row) => {
+    if (!acc[row.group_id]) acc[row.group_id] = [];
+    acc[row.group_id].push(row.user_id);
+    return acc;
+  }, {});
 
-  const dbChats = visibleGroups.map((group) => {
+  const dbChats = await Promise.all(visibleGroups.map(async (group) => {
     const channel = channelByGroup.get(group.group_id);
     const latestMessage = channel ? latestMessageByChannel.get(channel.channel_id) : null;
     const parsed = latestMessage ? parseMessageContent(latestMessage.content) : null;
     const memberNames = membersByGroup[group.group_id] || [];
+    const memberUserIds = memberUserIdsByGroup[group.group_id] || [];
     const isDirect = String(group.name || '').startsWith('dm:');
+    const otherUserId = isDirect
+      ? memberUserIds.find((id) => id && id !== currentUserId)
+      : null;
+    const otherUser = otherUserId ? userMap.get(otherUserId) : null;
     const displayName = isDirect
-      ? memberNames.find((member) => member && member !== (userMap.get(currentUserId)?.display_name || userMap.get(currentUserId)?.username)) ||
-        'Direct message'
+      ? otherUser?.display_name || otherUser?.username || 'Direct message'
       : group.name;
+    const metadata = parseGroupMetadata(group.description);
+    const resolvedCoverImage = isDirect
+      ? await resolveAvatarUrl(otherUser?.avatar_url || '')
+      : await resolveGroupImageUrl(metadata.image);
     return {
       id: group.group_id,
       name: displayName,
       preview: parsed?.text || 'Start chatting...',
       memberCount: memberNames.length,
-      coverImage: null,
+      coverImage: resolvedCoverImage || null,
       members: memberNames,
       messages: [],
       settings: {
-        description: group.description || '',
+        description: metadata.description || '',
         isMuted: false,
       },
     };
-  });
+  }));
 
   const existingKeys = new Set(
     dbChats.map((chat) => String(chat.id))
@@ -229,17 +307,20 @@ export async function fetchGroupChat(chatId, currentUserId) {
     channel = await ensureGeneralChannel(group.group_id);
   }
   if (!channel) {
+    const metadata = parseGroupMetadata(group.description);
+    const resolvedCoverImage = await resolveGroupImageUrl(metadata.image);
     return {
       id: group.group_id,
       name: group.name,
       preview: 'Start chatting...',
       memberCount: 0,
-      coverImage: null,
+      coverImage: resolvedCoverImage || null,
       members: [],
       messages: [],
+      memberUserIds: [],
       channelId: null,
       settings: {
-        description: group.description || '',
+        description: metadata.description || '',
         isMuted: false,
       },
     };
@@ -265,39 +346,46 @@ export async function fetchGroupChat(chatId, currentUserId) {
     const user = userMap.get(row.user_id);
     return user?.display_name || user?.username || 'Crafter';
   });
-  const currentUserName =
-    userMap.get(currentUserId)?.display_name ||
-    userMap.get(currentUserId)?.username ||
-    '';
   const isDirect = String(group.name || '').startsWith('dm:');
+  const metadata = parseGroupMetadata(group.description);
+  const otherUserId = isDirect
+    ? (memberRows || []).map((row) => row.user_id).find((id) => id && id !== currentUserId)
+    : null;
+  const otherUser = otherUserId ? userMap.get(otherUserId) : null;
+  const resolvedCoverImage = isDirect
+    ? await resolveAvatarUrl(otherUser?.avatar_url || '')
+    : await resolveGroupImageUrl(metadata.image);
   const displayName = isDirect
-    ? members.find((name) => name && name !== currentUserName) || 'Direct message'
+    ? otherUser?.display_name || otherUser?.username || 'Direct message'
     : group.name;
 
-  const messages = (messageRows || []).map((row) => {
+  const messages = await Promise.all((messageRows || []).map(async (row) => {
     const user = userMap.get(row.user_id);
     const parsed = parseMessageContent(row.content);
+    const avatarUrl = await resolveAvatarUrl(user?.avatar_url || '');
     return {
       id: row.message_id,
       author: user?.display_name || user?.username || 'Crafter',
+      avatarUrl: avatarUrl || null,
       text: parsed.text || '',
       image: parsed.image || null,
       userId: row.user_id,
       createdAt: row.created_at,
     };
-  });
+  }));
 
   return {
     id: group.group_id,
     name: displayName,
     preview: messages.length ? messages[messages.length - 1].text : 'Start chatting...',
     memberCount: members.length,
-    coverImage: null,
+    coverImage: resolvedCoverImage || null,
     members,
+    memberUserIds: (memberRows || []).map((row) => row.user_id),
     messages,
     channelId: channel.channel_id,
     settings: {
-      description: group.description || '',
+      description: metadata.description || '',
       isMuted: false,
     },
   };
@@ -330,9 +418,11 @@ export async function sendGroupMessage({ channelId, userId, text, image }) {
   const userMap = await getUserMap([userId]);
   const author = userMap.get(userId);
   const parsed = parseMessageContent(data.content);
+  const avatarUrl = await resolveAvatarUrl(author?.avatar_url || '');
   return {
     id: data.message_id,
     author: author?.display_name || author?.username || 'You',
+    avatarUrl: avatarUrl || null,
     text: parsed.text || '',
     image: parsed.image || null,
     userId,
@@ -387,4 +477,90 @@ export async function getOrCreateDirectMessageChat(currentUserId, otherUserId) {
   if (channelError) throw channelError;
 
   return groupId;
+}
+
+export async function createGroupChat({ ownerId, name, description, memberIds = [] }) {
+  if (!supabase || !ownerId) {
+    throw new Error('Missing group creation data.');
+  }
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) {
+    throw new Error('Group name is required.');
+  }
+
+  const uniqueMemberIds = [...new Set([ownerId, ...memberIds].filter(Boolean))];
+
+  const { data: createdGroup, error: createGroupError } = await supabase
+    .from('groups')
+    .insert([
+      {
+        name: trimmedName,
+        description: serializeGroupMetadata(String(description || '').trim(), null),
+        owner_id: ownerId,
+      },
+    ])
+    .select('group_id')
+    .single();
+  if (createGroupError) throw createGroupError;
+
+  const groupId = createdGroup.group_id;
+  const membershipRows = uniqueMemberIds.map((userId) => ({
+    group_id: groupId,
+    user_id: userId,
+    role: userId === ownerId ? 'admin' : 'member',
+  }));
+  const { error: membersError } = await supabase.from('group_members').insert(membershipRows);
+  if (membersError) throw membersError;
+
+  const { error: channelError } = await supabase
+    .from('group_channels')
+    .insert([{ group_id: groupId, name: 'general', description: 'Group chat channel' }]);
+  if (channelError) throw channelError;
+
+  return groupId;
+}
+
+export async function updateGroupDetails({ groupId, name, description, image }) {
+  if (!supabase || !groupId) {
+    throw new Error('Missing group update data.');
+  }
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) {
+    throw new Error('Group name is required.');
+  }
+  const payload = {
+    name: trimmedName,
+    description: serializeGroupMetadata(String(description || '').trim(), image || null),
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('groups').update(payload).eq('group_id', groupId);
+  if (error) throw error;
+  return true;
+}
+
+export async function addMembersToGroup({ groupId, userIds = [] }) {
+  if (!supabase || !groupId) throw new Error('Missing group id.');
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  if (!uniqueIds.length) return 0;
+  const rows = uniqueIds.map((userId) => ({
+    group_id: groupId,
+    user_id: userId,
+    role: 'member',
+  }));
+  const { error } = await supabase
+    .from('group_members')
+    .upsert(rows, { onConflict: 'group_id,user_id', ignoreDuplicates: true });
+  if (error) throw error;
+  return uniqueIds.length;
+}
+
+export async function leaveGroup({ groupId, userId }) {
+  if (!supabase || !groupId || !userId) throw new Error('Missing leave group data.');
+  const { error } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return true;
 }

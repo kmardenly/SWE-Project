@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat, normalizeRouteChatId } from '@/lib/groupChats.service';
+import { fetchGroupChat, leaveGroup, normalizeRouteChatId } from '@/lib/groupChats.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -28,25 +28,46 @@ export default function GroupChatMoreScreen() {
   const { user } = useUser();
   const [chat, setChat] = useState(null);
 
-  useEffect(() => {
-    let mounted = true;
-    if (!chatId) {
-      router.back();
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      if (!chatId) {
+        router.back();
+        return () => {
+          mounted = false;
+        };
+      }
+      fetchGroupChat(chatId, user?.id)
+        .then((data) => {
+          if (mounted) setChat(data);
+        })
+        .catch(() => {
+          if (mounted) setChat(null);
+        });
       return () => {
         mounted = false;
       };
-    }
-    fetchGroupChat(chatId, user?.id)
-      .then((data) => {
-        if (mounted) setChat(data);
-      })
-      .catch(() => {
-        if (mounted) setChat(null);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [chatId, user?.id]);
+    }, [chatId, user?.id])
+  );
+
+  async function handleLeaveGroup() {
+    if (!chatId || !user?.id) return;
+    Alert.alert('Leave group', 'Are you sure you want to leave this group?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await leaveGroup({ groupId: chatId, userId: user.id });
+            router.replace('/home/group-chats');
+          } catch (error) {
+            Alert.alert('Error', error?.message || 'Could not leave group.');
+          }
+        },
+      },
+    ]);
+  }
 
   if (!chat) {
     return (
@@ -73,16 +94,20 @@ export default function GroupChatMoreScreen() {
           <View style={styles.spacer} />
         </View>
 
-        <View style={styles.avatarCircle} />
+        {chat.coverImage ? (
+          <Image source={{ uri: chat.coverImage }} style={styles.avatarCircle} />
+        ) : (
+          <View style={styles.avatarCircle} />
+        )}
 
         <View style={styles.iconRow}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={() => router.push(`/home/group-chats/${chat.id}/edit`)}>
             <Ionicons name="create-outline" size={34} color={DARK} />
           </Pressable>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={() => router.push(`/home/group-chats/${chat.id}/add-people`)}>
             <Ionicons name="person-add-outline" size={34} color={DARK} />
           </Pressable>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={handleLeaveGroup}>
             <Ionicons name="exit-outline" size={34} color={DARK} />
           </Pressable>
         </View>
