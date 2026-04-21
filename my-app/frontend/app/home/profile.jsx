@@ -25,6 +25,7 @@ import {
   unfollowUser,
   removeFollower,
   getUserName,
+  getDisplayName,
 } from '@/FE-services/follows.service';
 import { resolveAvatarUrl } from '@/lib/resolveAvatarUrl';
 import { supabase } from '@/lib/supabaseClient';
@@ -65,6 +66,7 @@ export default function ProfileScreen() {
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
 
   const userName = getUserName(profile);
+  const displayName = getDisplayName(profile);
 
   const loadProfileRow = useCallback(async () => {
     if (!user?.id || !supabase) return;
@@ -232,7 +234,7 @@ export default function ProfileScreen() {
 
   const postsCount = userPosts.length;
   const bioText =
-    profile?.bio?.trim() || 'Hello, I am username and I love making crafts';
+    profile?.bio?.trim() || `Hello, I am ${displayName} and I love making crafts`;
 
   if (loading && !profile) {
     return (
@@ -282,7 +284,10 @@ export default function ProfileScreen() {
             style={styles.avatar}
           />
           <View style={styles.headerRight}>
-            <Text style={styles.userName}>{userName}</Text>
+            <View style={styles.nameContainer}>
+              <Text style={styles.displayName}>{displayName}</Text>
+              <Text style={styles.userName}>@{userName}</Text>
+            </View>
             <View style={styles.statsRow}>
               <View style={styles.statCell}>
                 <Text style={styles.statLabel}>Posts</Text>
@@ -462,11 +467,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  userName: {
+
+  nameContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  displayName: {
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(26, 22, 30),
-    color: DARK,
-    marginBottom: 10,
+    color: '#4b2e2e',
+  },
+  userName: {
+    fontFamily: 'Gaegu',
+    fontSize: responsive(14, 12, 18 ),
+    color: '#8b7d7b',
+    marginTop: -8,
   },
   statsRow: {
     flexDirection: 'row',
@@ -478,6 +493,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statLabel: {
+    fontFamily: 'Gafata',
     fontSize: 12,
     color: '#7a6560',
     fontWeight: '600',
@@ -489,10 +505,11 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   bio: {
-    fontSize: 15,
+    fontFamily: 'Gafata',
+    fontSize: responsive(15, 14, 18),
     color: '#4b3f3c',
-    lineHeight: 22,
-    marginBottom: 18,
+    lineHeight: responsive(22, 20, 26),
+    marginBottom: 12,
   },
   actionRow: {
     flexDirection: 'row',
@@ -547,10 +564,11 @@ const styles = StyleSheet.create({
     color: '#8a7874',
   },
   noPostsText: {
+    fontFamily: 'Gaegu-Bold',
     width: '100%',
     textAlign: 'center',
     color: '#8a7874',
-    fontSize: 15,
+    fontSize: responsive(18, 15, 21),
     paddingVertical: 24,
   },
   modalOverlay: {

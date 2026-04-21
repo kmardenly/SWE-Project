@@ -13,7 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter} from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '@/context/UserContext';
@@ -53,9 +53,7 @@ export default function OtherProfileScreen() {
   const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams();
-  const viewedUserId = Array.isArray(params.userId)
-      ? params.userId[0]
-      : params.userId;
+  const viewedUserId = Array.isArray(params.userId) ? params.userId[0] : params.userId;
 
   const [loading, setLoading] = useState(true);
   const [followButtonLoading, setFollowButtonLoading] = useState(false);
@@ -76,9 +74,8 @@ export default function OtherProfileScreen() {
   const isOwnProfile = currentUserId && viewedUserId && currentUserId === viewedUserId;
 
   const userName = getUserName(profile);
-  const displayName = getDisplayName(profile);
+  const displayName = getDisplayName(profile) || userName;
   const postsCount = userPosts.length;
-  const headerTitle = displayName || userName;
 
   async function loadScreen() {
     if (!viewedUserId) {
@@ -116,7 +113,7 @@ export default function OtherProfileScreen() {
   }
 
   function goToOtherProfile(targetUserId) {
-    if (!targetUserId) return;
+    if (!targetUserId || targetUserId === currentUserId) return;
 
     setFollowersModalVisible(false);
     setFollowingModalVisible(false);
@@ -196,7 +193,6 @@ export default function OtherProfileScreen() {
     try {
       setActionLoadingId(targetUserId);
       await unfollowUser(currentUserId, targetUserId);
-
       setFollowing((prev) => prev.filter((item) => item.user_id !== targetUserId));
     } catch (error) {
       console.error('Error unfollowing from list:', error);
@@ -218,6 +214,7 @@ export default function OtherProfileScreen() {
           <View style={styles.listItem}>
             <View style={styles.listTextContainer}>
               <Text style={styles.listName}>{getDisplayName(item)}</Text>
+              <Text style={styles.listUserName}>@{getUserName(item)}</Text>
               {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
             </View>
           </View>
@@ -229,6 +226,7 @@ export default function OtherProfileScreen() {
           <View style={styles.listItem}>
             <View style={styles.listTextContainer}>
               <Text style={styles.listName}>{getDisplayName(item)}</Text>
+              <Text style={styles.listUserName}>@{getUserName(item)}</Text>
               {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
             </View>
           </View>
@@ -245,6 +243,7 @@ export default function OtherProfileScreen() {
           {isCurrentUser ? (
               <View style={styles.listTextContainer}>
                 <Text style={styles.listName}>{getDisplayName(item)}</Text>
+                <Text style={styles.listUserName}>@{getUserName(item)}</Text>
                 {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
               </View>
           ) : (
@@ -253,6 +252,7 @@ export default function OtherProfileScreen() {
                   onPress={() => goToOtherProfile(item.user_id)}
               >
                 <Text style={styles.listName}>{getDisplayName(item)}</Text>
+                <Text style={styles.listUserName}>@{getUserName(item)}</Text>
                 {!!item.bio && <Text style={styles.listBio}>{item.bio}</Text>}
               </Pressable>
           )}
@@ -282,58 +282,71 @@ export default function OtherProfileScreen() {
 
   if (!viewedUserId) {
     return (
-      <View style={styles.missingStateContainer}>
-        <Text style={styles.missingStateText}>Click on a username on a post to access other profiles</Text>
-        <Pressable style={styles.missingStateButton} onPress={() => router.back()}>
-          <Text style={styles.missingStateButtonText}>Go Back</Text>
-        </Pressable>
-      </View>
+        <View style={styles.missingStateContainer}>
+          <Text style={styles.missingStateText}>
+            Click on a username on a post to access other profiles
+          </Text>
+          <Pressable style={styles.missingStateButton} onPress={() => router.back()}>
+            <Text style={styles.missingStateButtonText}>Go Back</Text>
+          </Pressable>
+        </View>
     );
   }
 
   return (
       <View style={styles.root}>
         <ImageBackground
-          source={require('@/assets/images/goal_bg.png')}
-          resizeMode="cover"
-          style={styles.backgroundLayer}
+            source={require('@/assets/images/goal_bg.png')}
+            resizeMode="cover"
+            style={styles.backgroundLayer}
         />
         <View style={styles.foreground}>
           <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
             <Pressable
-              style={styles.backButton}
-              onPress={() => router.back()}
-              hitSlop={10}
+                style={styles.backButton}
+                onPress={() => router.back()}
+                hitSlop={10}
             >
-              <Ionicons name="chevron-back" size={responsive(24, 20, 28)} color={DARK} />
+              <Ionicons
+                  name="chevron-back"
+                  size={responsive(24, 20, 28)}
+                  color={DARK}
+              />
             </Pressable>
           </View>
 
           <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
           >
             <View style={styles.profileHeaderRow}>
               <Image
-                source={
-                  profile?.avatar_url
-                    ? { uri: profile.avatar_url }
-                    : require('@/assets/images/default_user.jpg')
-                }
-                style={styles.avatar}
+                  source={
+                    profile?.avatar_url
+                        ? { uri: profile.avatar_url }
+                        : require('@/assets/images/default_user.jpg')
+                  }
+                  style={styles.avatar}
               />
+
               <View style={styles.headerRight}>
-                <Text style={styles.userName}>{headerTitle}</Text>
+                <View style={styles.nameContainer}>
+                  <Text style={styles.displayName}>{displayName}</Text>
+                  <Text style={styles.userName}>@{userName}</Text>
+                </View>
+
                 <View style={styles.statsRow}>
                   <View style={styles.statCell}>
                     <Text style={styles.statLabel}>Posts</Text>
                     <Text style={styles.statNumber}>{formatStat(postsCount)}</Text>
                   </View>
+
                   <Pressable style={styles.statCell} onPress={openFollowersModal}>
                     <Text style={styles.statLabel}>Followers</Text>
                     <Text style={styles.statNumber}>{formatStat(followersCount)}</Text>
                   </Pressable>
+
                   <Pressable style={styles.statCell} onPress={openFollowingModal}>
                     <Text style={styles.statLabel}>Following</Text>
                     <Text style={styles.statNumber}>{formatStat(followingCount)}</Text>
@@ -342,57 +355,64 @@ export default function OtherProfileScreen() {
               </View>
             </View>
 
-            <Text style={styles.bio}>{profile?.bio || 'Hello, I am username and I love making crafts'}</Text>
+            <Text style={styles.bio}>
+              {profile?.bio || `Hello, I am ${displayName} and I love making crafts`}
+            </Text>
 
             {!isOwnProfile && (
-              <View style={styles.actionRow}>
-                <Pressable
-                  style={[
-                    styles.profileActionButton,
-                    currentlyFollowing ? styles.followingButton : styles.followNowButton,
-                  ]}
-                  onPress={handleToggleFollow}
-                  disabled={followButtonLoading}
-                >
-                  <Text style={styles.followButtonText}>
-                    {followButtonLoading
-                      ? 'Loading...'
-                      : currentlyFollowing
-                        ? 'Unfollow'
-                        : 'Follow'}
-                  </Text>
-                </Pressable>
-                <Pressable style={styles.profileActionButton} onPress={handleStartMessage}>
-                  <Text style={styles.followButtonText}>Message</Text>
-                </Pressable>
-              </View>
+                <View style={styles.actionRow}>
+                  <Pressable
+                      style={({ pressed }) => [styles.pillButton, pressed && styles.pillButtonPressed]}
+                      onPress={handleToggleFollow}
+                      disabled={followButtonLoading}
+                  >
+                    <Text style={styles.pillButtonText}>
+                      {followButtonLoading
+                          ? 'Loading...'
+                          : currentlyFollowing
+                              ? 'Unfollow'
+                              : 'Follow'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                      style={({ pressed }) => [styles.pillButton, pressed && styles.pillButtonPressed]}
+                      onPress={handleStartMessage}
+                  >
+                    <Text style={styles.pillButtonText}>Message</Text>
+                  </Pressable>
+                </View>
             )}
 
             <View style={styles.grid}>
               {userPosts.length > 0 ? (
-                userPosts.map((post) => (
-                  <Pressable
-                    key={post.id}
-                    style={styles.postTile}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/home/explore/[id]',
-                        params: {
-                          id: post.id,
-                          fromUserId: viewedUserId,
-                        },
-                      })
-                    }
-                  >
-                    {post.imageUrl ? (
-                      <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
-                    ) : (
-                      <Text style={styles.postPlaceholderText}>placeholder</Text>
-                    )}
-                  </Pressable>
-                ))
+                  userPosts.map((post) => (
+                      <Pressable
+                          key={post.id}
+                          style={styles.postTile}
+                          onPress={() =>
+                              router.push({
+                                pathname: '/home/explore/[id]',
+                                params: {
+                                  id: post.id,
+                                  fromUserId: viewedUserId,
+                                },
+                              })
+                          }
+                      >
+                        {post.imageUrl ? (
+                            <Image
+                                source={{ uri: post.imageUrl }}
+                                style={styles.postImage}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            <Text style={styles.postPlaceholderText}>placeholder</Text>
+                        )}
+                      </Pressable>
+                  ))
               ) : (
-                <Text style={styles.noPostsText}>No posts yet.</Text>
+                  <Text style={styles.noPostsText}>No posts yet.</Text>
               )}
             </View>
           </ScrollView>
@@ -544,17 +564,27 @@ const styles = StyleSheet.create({
     borderRadius: responsive(50, 44, 56),
     backgroundColor: '#e8e0dc',
   },
-  userName: {
+  nameContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  displayName: {
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(26, 22, 30),
-    color: DARK,
-    marginBottom: 10,
+    color: '#4b2e2e',
+  },
+  userName: {
+    fontFamily: 'Gaegu',
+    fontSize: responsive(14, 12, 18),
+    color: '#8b7d7b',
+    marginTop: -8,
   },
   bio: {
-    fontSize: 15,
+    fontFamily: 'Gafata',
+    fontSize: responsive(15, 14, 18),
     color: '#4b3f3c',
-    lineHeight: 22,
-    marginBottom: 18,
+    lineHeight: responsive(22, 20, 26),
+    marginBottom: 12,
   },
   statsRow: {
     flexDirection: 'row',
@@ -571,44 +601,42 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   statLabel: {
-    fontSize: 12,
+    fontFamily: 'Gafata',
+    fontSize: responsive(12, 11, 14),
     color: '#7a6560',
-    fontWeight: '600',
     marginBottom: 2,
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 18,
+    gap: 12,
+    marginBottom: 22,
   },
-  profileActionButton: {
+  pillButton: {
     flex: 1,
+    backgroundColor: '#f5d0d0',
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#A58E86',
-    backgroundColor: '#e8d5d5',
+    shadowColor: '#5c3d3d',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  followNowButton: {
-    backgroundColor: '#E7D4D4',
+  pillButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
   },
-  followingButton: {
-    backgroundColor: '#D7BFBF',
-  },
-  followButtonText: {
-    color: DARK,
+  pillButtonText: {
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(17, 15, 20),
+    color: DARK,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: COLUMN_GAP,
-    marginBottom: 20,
+    gap: COLUMN_GAP,
   },
   postTile: {
     width: COL_WIDTH,
@@ -631,12 +659,12 @@ const styles = StyleSheet.create({
     fontSize: responsive(14, 12, 16),
   },
   noPostsText: {
+    fontFamily: 'Gaegu-Bold',
     width: '100%',
     textAlign: 'center',
-    color: DARK,
-    fontFamily: 'Gaegu-Bold',
+    color: '#8a7874',
     fontSize: responsive(18, 15, 21),
-    marginTop: 8,
+    paddingVertical: 24,
   },
   modalOverlay: {
     flex: 1,
@@ -651,8 +679,8 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 19, 26),
     color: '#111827',
     textAlign: 'center',
     marginBottom: 16,
@@ -670,13 +698,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 14, 19),
     color: '#111827',
+  },
+  listUserName: {
+    fontFamily: 'Gaegu',
+    fontSize: responsive(13, 12, 16),
+    color: '#6B7280',
+    marginTop: -4,
   },
   listBio: {
     marginTop: 4,
-    fontSize: 13,
+    fontFamily: 'Gafata',
+    fontSize: responsive(13, 12, 15),
     color: '#6B7280',
   },
   actionButton: {
@@ -689,8 +724,8 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(13, 12, 16),
   },
   closeButton: {
     marginTop: 16,
@@ -701,13 +736,14 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(15, 14, 18),
   },
   emptyText: {
     textAlign: 'center',
     color: '#6B7280',
-    fontSize: 15,
+    fontFamily: 'Gafata',
+    fontSize: responsive(15, 14, 18),
     paddingVertical: 30,
   },
 });

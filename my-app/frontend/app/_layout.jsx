@@ -24,9 +24,9 @@ export default function RootLayout() {
   const isGroupChatsRoute = pathname?.startsWith('/home/group-chats');
   const showPostButton = pathname !== '/' && pathname !== '/post' && !isGroupChatsRoute;
   const [fontsLoaded] = useFonts({
-    Gaegu: Gaegu_400Regular,
+    'Gaegu': Gaegu_400Regular,
     'Gaegu-Bold': Gaegu_700Bold,
-    Gafata: Gafata_400Regular,
+    'Gafata' : Gafata_400Regular,
   });
 
   useEffect(() => {
