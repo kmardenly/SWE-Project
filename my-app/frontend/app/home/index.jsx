@@ -344,7 +344,7 @@ export default function HomeScreen() {
           <ScrollView
               ref={scrollRef}
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 24 }}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 130 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               refreshControl={

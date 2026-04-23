@@ -5,8 +5,6 @@ import { Image, StyleSheet, View } from 'react-native';
 
 const TAB_BAR_LABEL_ACTIVE = '#b86772';
 const TAB_BAR_LABEL_INACTIVE = '#4A3E3B';
-/** Solid base behind nav_bar_bg so scene backgrounds do not show through transparent PNG areas */
-const TAB_BAR_BASE_COLOR = '#FFF5F5';
 
 const TAB_ICONS = {
   home: {
@@ -46,7 +44,6 @@ export default function HomeTabsLayout() {
           tabBarIconStyle: styles.tabBarIcon,
           tabBarBackground: () => (
             <View style={styles.tabBarBackgroundRoot} pointerEvents="none">
-              <View style={[styles.tabBarUnderlay, { backgroundColor: TAB_BAR_BASE_COLOR }]} />
               <Image source={require('@/assets/images/nav_bar_bg.png')} style={styles.tabBarBackground} />
             </View>
           ),
@@ -164,9 +161,6 @@ const styles = StyleSheet.create({
   },
   tabBarBackgroundRoot: {
     flex: 1,
-  },
-  tabBarUnderlay: {
-    ...StyleSheet.absoluteFillObject,
   },
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
