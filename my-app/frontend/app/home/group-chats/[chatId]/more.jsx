@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat, leaveGroup, normalizeRouteChatId } from '@/lib/groupChats.service';
+import { fetchGroupChat, leaveGroup, normalizeRouteChatId, removeGroupMember } from '@/lib/groupChats.service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -27,27 +27,30 @@ export default function GroupChatMoreScreen() {
   const chatId = normalizeRouteChatId(params.chatId);
   const { user } = useUser();
   const [chat, setChat] = useState(null);
+  const [memberActionTarget, setMemberActionTarget] = useState(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      if (!chatId) {
-        router.back();
-        return () => {
-          mounted = false;
-        };
-      }
-      fetchGroupChat(chatId, user?.id)
-        .then((data) => {
-          if (mounted) setChat(data);
-        })
-        .catch(() => {
-          if (mounted) setChat(null);
-        });
+  const loadChat = useCallback(() => {
+    let mounted = true;
+    if (!chatId) {
+      router.back();
       return () => {
         mounted = false;
       };
-    }, [chatId, user?.id])
+    }
+    fetchGroupChat(chatId, user?.id)
+      .then((data) => {
+        if (mounted) setChat(data);
+      })
+      .catch(() => {
+        if (mounted) setChat(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [chatId, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => loadChat(), [loadChat])
   );
 
   async function handleLeaveGroup() {
@@ -69,6 +72,41 @@ export default function GroupChatMoreScreen() {
     ]);
   }
 
+  function handleMemberPress(memberUserId) {
+    if (!memberUserId) return;
+    if (memberUserId === user?.id) {
+      router.push('/home/profile');
+      return;
+    }
+    router.push({
+      pathname: '/home/other.profile',
+      params: { userId: memberUserId },
+    });
+  }
+
+  const memberIndex = chat?.memberUserIds?.findIndex((id) => id === user?.id) ?? -1;
+  const currentUserRole = memberIndex >= 0 ? String(chat?.memberRoles?.[memberIndex] || 'member') : 'member';
+  const isCurrentUserAdmin = currentUserRole === 'admin';
+
+  function openMemberAction(member, memberUserId, memberRole) {
+    if (!isCurrentUserAdmin || !memberUserId || memberUserId === user?.id || memberRole === 'admin') return;
+    setMemberActionTarget({ name: member, userId: memberUserId });
+  }
+
+  async function handleKickMember() {
+    if (!memberActionTarget?.userId || !chatId) {
+      setMemberActionTarget(null);
+      return;
+    }
+    try {
+      await removeGroupMember({ groupId: chatId, userId: memberActionTarget.userId });
+      setMemberActionTarget(null);
+      loadChat();
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not remove member.');
+    }
+  }
+
   if (!chat) {
     return (
       <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -85,7 +123,7 @@ export default function GroupChatMoreScreen() {
         style={styles.backgroundLayer}
       />
 
-      <View style={styles.foreground}>
+      <ScrollView style={styles.foreground} contentContainerStyle={styles.foregroundContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={30} color={DARK} />
@@ -116,21 +154,57 @@ export default function GroupChatMoreScreen() {
           <Text style={styles.membersHeaderText}>Group Members | {chat.memberCount}</Text>
         </View>
 
-        <ScrollView style={styles.membersCard} contentContainerStyle={styles.membersContent}>
-          {chat.members.map((member) => (
-            <View key={member} style={styles.memberRow}>
-              <View style={styles.memberDot} />
-              <Text style={styles.memberName}>{member}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <View style={styles.membersCard}>
+          <View style={styles.membersContent}>
+          {chat.members.map((member, index) => {
+            const memberUserId = chat.memberUserIds?.[index];
+            const memberRole = String(chat.memberRoles?.[index] || 'member');
+            return (
+              <Pressable
+                key={`${member}-${memberUserId || index}`}
+                style={styles.memberPressable}
+                onPress={() => handleMemberPress(memberUserId)}
+                onLongPress={() => openMemberAction(member, memberUserId, memberRole)}
+                delayLongPress={260}
+                disabled={!memberUserId}
+              >
+                <View style={styles.memberRow}>
+                  <View style={styles.memberDot} />
+                  <Text style={styles.memberName}>{member}</Text>
+                  {memberRole === 'admin' ? (
+                    <Ionicons name="star" size={18} color="#d4a21e" style={styles.adminStar} />
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+          </View>
+        </View>
 
         <View style={styles.settingsCard}>
           <Text style={styles.settingsTitle}>Customization</Text>
           <SettingsRow icon="document-text-outline" label="Description" value={chat.settings.description} />
           <SettingsRow icon="notifications-outline" label="Mute" value={chat.settings.isMuted ? 'On' : 'Off'} />
         </View>
-      </View>
+      </ScrollView>
+
+      <Modal
+        visible={!!memberActionTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMemberActionTarget(null)}
+      >
+        <View style={styles.memberActionBackdrop}>
+          <Pressable style={styles.memberActionDismissArea} onPress={() => setMemberActionTarget(null)} />
+          <View style={styles.memberActionCard}>
+            <Text numberOfLines={1} style={styles.memberActionTitle}>{memberActionTarget?.name}</Text>
+            <Pressable style={styles.kickActionRow} onPress={handleKickMember}>
+              <Ionicons name="person-remove-outline" size={19} color="#9c4f4f" />
+              <Text style={styles.kickActionText}>Kick member</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -147,6 +221,8 @@ const styles = StyleSheet.create({
   },
   foreground: {
     flex: 1,
+  },
+  foregroundContent: {
     paddingTop: responsive(58, 48, 70),
     paddingHorizontal: 24,
     paddingBottom: 18,
@@ -199,7 +275,6 @@ const styles = StyleSheet.create({
     color: '#6c5656',
   },
   membersCard: {
-    flex: 1,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#c9b69e',
@@ -216,6 +291,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  memberPressable: {
+    width: '100%',
+  },
   memberDot: {
     width: 25,
     height: 25,
@@ -226,6 +304,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(39, 24, 43),
     color: DARK,
+  },
+  adminStar: {
+    marginLeft: 4,
   },
   settingsCard: {
     borderWidth: 1,
@@ -258,5 +339,41 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(23, 17, 28),
     color: '#7f6666',
+  },
+  memberActionBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.16)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 26,
+  },
+  memberActionDismissArea: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  memberActionCard: {
+    width: '100%',
+    maxWidth: 260,
+    backgroundColor: '#f8e2e2',
+    borderWidth: 1,
+    borderColor: '#d0afaf',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  memberActionTitle: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 15, 21),
+    color: DARK,
+  },
+  kickActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kickActionText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(17, 14, 20),
+    color: '#8d4b4b',
   },
 });

@@ -21,6 +21,7 @@ import NotificationModal from '@/components/notificationScreen';
 import StreakModal from '@/components/streakModal';
 import CatWindow from '@/components/cat-widget';
 import PostCard from '@/components/post-card';
+import FloatingPostButton from '@/components/floating-post-button';
 import SearchSuggestions from '@/components/search.suggestions';
 import SearchTagChips from '@/components/search.tag.chips';
 import { fetchExploreItems } from '@/constants/exploreItems';
@@ -429,12 +430,7 @@ export default function HomeScreen() {
             notifications={notifications}
         />
         <StreakModal visible={streakVisible} onClose={() => setStreakVisible(false)} streak={5} />
-        <Pressable
-            style={[homeStyles.floatingPostButton, { bottom: insets.bottom + 88 }]}
-            onPress={() => router.push('/post')}
-        >
-          <Text style={homeStyles.floatingPostButtonText}>Post</Text>
-        </Pressable>
+        <FloatingPostButton bottom={insets.bottom + 80} onPress={() => router.push('/post')} />
       </View>
   );
 }

@@ -19,6 +19,7 @@ import { fetchExploreItems } from '@/constants/exploreItems';
 import { filterPostsBySearch } from '@/FE-services/search.service';
 import SearchSuggestions from '@/components/search.suggestions';
 import SearchTagChips from '@/components/search.tag.chips';
+import FloatingPostButton from '@/components/floating-post-button';
 import {
   buildTagParam,
   parseTagParam,
@@ -296,12 +297,7 @@ export default function ExploreScreen() {
               </Pressable>
           )}
         </View>
-        <Pressable
-            style={[styles.floatingPostButton, { bottom: insets.bottom + 88 }]}
-            onPress={() => router.push('/post')}
-        >
-          <Text style={styles.floatingPostButtonText}>Post</Text>
-        </Pressable>
+        <FloatingPostButton bottom={insets.bottom + 80} onPress={() => router.push('/post')} />
       </View>
   );
 }
@@ -421,29 +417,5 @@ const styles = StyleSheet.create({
     fontSize: responsive(20, 17, 24),
     color: DARK,
     paddingTop: 8,
-  },
-  floatingPostButton: {
-    position: 'absolute',
-    right: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 999,
-    paddingHorizontal: 24,
-    height: 52,
-    borderWidth: 1,
-    borderColor: '#e3d3d3',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    elevation: 4,
-    zIndex: 30,
-  },
-  floatingPostButtonText: {
-    fontFamily: 'Gaegu-Bold',
-    fontSize: responsive(24, 21, 27),
-    color: '#5c3d3d',
-    lineHeight: responsive(26, 23, 29),
   },
 });

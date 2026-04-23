@@ -4,7 +4,9 @@ import {
   Alert,
   Dimensions,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,13 +17,16 @@ import {
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useUser } from '@/context/UserContext';
 
 import {
+  deleteGroupMessage,
   fetchGroupChat,
   markGroupChannelAsRead,
   normalizeRouteChatId,
   sendGroupMessage,
+  updateGroupMessage,
 } from '@/lib/groupChats.service';
 import {
   pickChatImageFromLibrary,
@@ -34,8 +39,24 @@ const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 const DARK = '#5c3d3d';
 
+function formatMessageTimestamp(value) {
+  if (!value) return '';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMessageDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const dayDiff = Math.round((startOfToday - startOfMessageDay) / 86400000);
+  const timePart = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (dayDiff === 0) return `Today at ${timePart}`;
+  if (dayDiff === 1) return `Yesterday at ${timePart}`;
+  const datePart = dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${datePart} at ${timePart}`;
+}
+
 export default function GroupChatDetailsScreen() {
   const params = useLocalSearchParams();
+  const tabBarHeight = useBottomTabBarHeight();
   const chatId = normalizeRouteChatId(params.chatId);
   const { user } = useUser();
   const [messageText, setMessageText] = useState('');
@@ -45,6 +66,12 @@ export default function GroupChatDetailsScreen() {
   const [sentMessages, setSentMessages] = useState([]);
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [expandedImageUri, setExpandedImageUri] = useState('');
+  const [messageActionTargetId, setMessageActionTargetId] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState('');
+  const [editDraftText, setEditDraftText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -86,6 +113,18 @@ export default function GroupChatDetailsScreen() {
       }
     }, [chat?.channelId, user?.id])
   );
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   if (loadError) {
     return (
@@ -164,6 +203,86 @@ export default function GroupChatDetailsScreen() {
     }
   };
 
+  const canSend = !sending && (!!messageText.trim() || !!pendingImage);
+  const messagesBottomPadding = keyboardVisible ? 18 : tabBarHeight + 90;
+  const composerBottomMargin = keyboardVisible ? 2 : tabBarHeight + 8;
+  const isImageModalVisible = !!expandedImageUri;
+  const memberIndex = chat.memberUserIds?.findIndex((id) => id === user?.id) ?? -1;
+  const currentUserRole = memberIndex >= 0 ? String(chat.memberRoles?.[memberIndex] || 'member') : 'member';
+  const isCurrentUserAdmin = currentUserRole === 'admin';
+
+  const handleMessageAuthorPress = (messageUserId) => {
+    if (!messageUserId) return;
+    if (messageUserId === user?.id) {
+      router.push('/home/profile');
+      return;
+    }
+    router.push({
+      pathname: '/home/other.profile',
+      params: { userId: messageUserId },
+    });
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!messageActionTargetId) {
+      setMessageActionTargetId('');
+      return;
+    }
+    try {
+      await deleteGroupMessage({ messageId: messageActionTargetId });
+      setSentMessages((prev) => prev.filter((msg) => msg.id !== messageActionTargetId));
+      setMessageActionTargetId('');
+      if (editingMessageId === messageActionTargetId) {
+        setEditingMessageId('');
+        setEditDraftText('');
+      }
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not delete this message.');
+    }
+  };
+
+  const startEditingMessage = (message) => {
+    if (!message?.id || message.userId !== user?.id) return;
+    setEditingMessageId(message.id);
+    setEditDraftText(message.text || '');
+    setMessageActionTargetId('');
+  };
+
+  const cancelEditingMessage = () => {
+    setEditingMessageId('');
+    setEditDraftText('');
+  };
+
+  const saveEditedMessage = async (message) => {
+    if (!message?.id) return;
+    const nextText = editDraftText.trim();
+    if (!nextText) {
+      Alert.alert('Message required', 'Edited message cannot be empty.');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      const updated = await updateGroupMessage({
+        messageId: message.id,
+        text: nextText,
+        image: message.image || null,
+      });
+      setSentMessages((prev) =>
+        prev.map((item) =>
+          item.id === message.id
+            ? { ...item, text: updated.text, image: updated.image, editedAt: updated.editedAt }
+            : item
+        )
+      );
+      setEditingMessageId('');
+      setEditDraftText('');
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not update this message.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       <Image
@@ -174,7 +293,8 @@ export default function GroupChatDetailsScreen() {
 
       <KeyboardAvoidingView
         style={styles.foreground}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={30} color={DARK} />
@@ -187,48 +307,141 @@ export default function GroupChatDetailsScreen() {
 
         <ScrollView
           style={styles.messagesScroll}
-          contentContainerStyle={styles.messagesContent}
+          contentContainerStyle={[styles.messagesContent, { paddingBottom: messagesBottomPadding }]}
           showsVerticalScrollIndicator={false}>
           {sentMessages.map((message) => (
             <View key={message.id} style={styles.messageWrap}>
-              {message.avatarUrl ? (
-                <Image source={{ uri: message.avatarUrl }} style={styles.avatarDot} resizeMode="cover" />
-              ) : (
-                <View style={styles.avatarDot} />
-              )}
-              <View style={styles.messageBlock}>
-                <Text style={styles.authorText}>{message.author}</Text>
-                <Text style={styles.messageText}>{message.text}</Text>
-                {message.image ? <Image source={{ uri: message.image }} style={styles.messageImage} /> : null}
-              </View>
+              <Pressable onPress={() => handleMessageAuthorPress(message.userId)} hitSlop={8} disabled={!message.userId}>
+                {message.avatarUrl ? (
+                  <Image source={{ uri: message.avatarUrl }} style={styles.avatarDot} resizeMode="cover" />
+                ) : (
+                  <View style={styles.avatarDot} />
+                )}
+              </Pressable>
+              <Pressable
+                style={styles.messageBlock}
+                disabled={!(isCurrentUserAdmin || message.userId === user?.id)}
+                onLongPress={() => setMessageActionTargetId(message.id)}
+                delayLongPress={260}
+              >
+                <View style={styles.authorMetaRow}>
+                  <Pressable
+                    onPress={() => handleMessageAuthorPress(message.userId)}
+                    hitSlop={6}
+                    style={styles.authorPressable}
+                    disabled={!message.userId}
+                  >
+                    <Text style={styles.authorText}>{message.author}</Text>
+                  </Pressable>
+                  {message.createdAt ? (
+                    <Text style={styles.messageDateText}>{formatMessageTimestamp(message.createdAt)}</Text>
+                  ) : null}
+                </View>
+                {editingMessageId === message.id ? (
+                  <View style={styles.editWrap}>
+                    <TextInput
+                      value={editDraftText}
+                      onChangeText={setEditDraftText}
+                      style={styles.editInput}
+                      multiline
+                    />
+                    <View style={styles.editActionsRow}>
+                      <Pressable style={styles.editActionBtn} onPress={cancelEditingMessage} disabled={savingEdit}>
+                        <Text style={styles.editActionText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.editActionBtn, styles.editSaveBtn]}
+                        onPress={() => saveEditedMessage(message)}
+                        disabled={savingEdit}
+                      >
+                        <Text style={[styles.editActionText, styles.editSaveText]}>
+                          {savingEdit ? 'Saving...' : 'Save'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.messageText}>{message.text}</Text>
+                )}
+                {message.editedAt ? (
+                  <Text style={styles.messageEditedText}>Edited {formatMessageTimestamp(message.editedAt)}</Text>
+                ) : null}
+                {message.image ? (
+                  <Pressable onPress={() => setExpandedImageUri(message.image)} hitSlop={8}>
+                    <Image source={{ uri: message.image }} style={styles.messageImage} />
+                  </Pressable>
+                ) : null}
+                {messageActionTargetId === message.id ? (
+                  <View style={styles.inlineActionBubble}>
+                    {(isCurrentUserAdmin || message.userId === user?.id) ? (
+                      <Pressable style={styles.inlineActionBtn} onPress={handleDeleteMessage}>
+                        <Ionicons name="trash-outline" size={16} color="#a54f4f" />
+                        <Text style={styles.inlineActionText}>Delete</Text>
+                      </Pressable>
+                    ) : null}
+                    {message.userId === user?.id ? (
+                      <Pressable style={styles.inlineActionBtn} onPress={() => startEditingMessage(message)}>
+                        <Ionicons name="create-outline" size={16} color="#7a5f5f" />
+                        <Text style={styles.inlineActionText}>Edit</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+              </Pressable>
             </View>
           ))}
         </ScrollView>
 
-        <View style={styles.inputWrap}>
+        <View
+          style={[
+            styles.inputWrap,
+            { marginBottom: composerBottomMargin },
+          ]}>
           {pendingImage ? (
             <View style={styles.pendingImageBadge}>
-              <Ionicons name="image-outline" size={16} color={DARK} />
+              <Image source={{ uri: pendingImage.localUri }} style={styles.pendingImageThumb} />
               <Text style={styles.pendingImageText}>1 image ready</Text>
+              <Pressable onPress={() => setPendingImage(null)} hitSlop={8}>
+                <Ionicons name="close-circle" size={18} color={DARK} />
+              </Pressable>
             </View>
           ) : null}
           <View style={styles.inputRow}>
             <Pressable onPress={handleAttachImage} style={styles.attachButton} hitSlop={8}>
               <Ionicons name="image-outline" size={22} color={DARK} />
             </Pressable>
-          <TextInput
-            style={styles.input}
-            value={messageText}
-            onChangeText={setMessageText}
-            placeholder="Send a message..."
-            placeholderTextColor="#9b8080"
-          />
-            <Pressable onPress={handleSendMessage} style={styles.sendButton} hitSlop={8} disabled={sending}>
+            <TextInput
+              style={styles.input}
+              value={messageText}
+              onChangeText={setMessageText}
+              placeholder="Send a message..."
+              placeholderTextColor="#9b8080"
+            />
+            <Pressable
+              onPress={handleSendMessage}
+              style={[styles.sendButton, !canSend ? styles.sendButtonDisabled : null]}
+              hitSlop={8}
+              disabled={!canSend}>
               <Ionicons name="send" size={20} color="#fff" />
             </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={isImageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExpandedImageUri('')}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={styles.modalDismissArea} onPress={() => setExpandedImageUri('')} />
+          <Pressable style={styles.modalCloseButton} onPress={() => setExpandedImageUri('')} hitSlop={10}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+          <Image source={{ uri: expandedImageUri }} style={styles.expandedImage} resizeMode="contain" />
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -296,11 +509,35 @@ const styles = StyleSheet.create({
     fontSize: responsive(16, 14, 18),
     lineHeight: responsive(20, 18, 22),
   },
+  authorPressable: {
+    alignSelf: 'flex-start',
+  },
+  authorMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  messageDateText: {
+    fontFamily: 'Gaegu',
+    color: '#8e7777',
+    fontSize: responsive(14, 12, 16),
+    lineHeight: responsive(16, 14, 18),
+    flexShrink: 1,
+    textAlign: 'right',
+  },
   messageText: {
     fontFamily: 'Gaegu-Bold',
     color: '#201818',
     fontSize: responsive(20, 16, 24),
     lineHeight: responsive(24, 20, 28),
+  },
+  messageEditedText: {
+    marginTop: 2,
+    fontFamily: 'Gaegu',
+    color: '#9f8a8a',
+    fontSize: responsive(13, 11, 15),
+    lineHeight: responsive(15, 13, 17),
   },
   messageImage: {
     marginTop: 8,
@@ -308,6 +545,89 @@ const styles = StyleSheet.create({
     height: responsive(148, 120, 180),
     borderRadius: 6,
     backgroundColor: '#ddd',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  modalDismissArea: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: responsive(56, 46, 66),
+    right: 22,
+    zIndex: 2,
+  },
+  expandedImage: {
+    width: '100%',
+    maxWidth: 520,
+    height: '80%',
+  },
+  inlineActionBubble: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    backgroundColor: '#f8e3e3',
+    borderWidth: 1,
+    borderColor: '#d5b8b8',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  inlineActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  inlineActionText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(15, 13, 18),
+    color: '#8d4b4b',
+  },
+  editWrap: {
+    marginTop: 4,
+  },
+  editInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: '#c9a5a5',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#f9ecec',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 14, 21),
+    color: '#2b2020',
+  },
+  editActionsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editActionBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f3dede',
+    borderWidth: 1,
+    borderColor: '#cfb0b0',
+  },
+  editSaveBtn: {
+    backgroundColor: '#9f7f7f',
+    borderColor: '#9f7f7f',
+  },
+  editActionText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(15, 13, 18),
+    color: '#6a4f4f',
+  },
+  editSaveText: {
+    color: '#fff',
   },
   inputWrap: {
     marginHorizontal: 16,
@@ -335,6 +655,12 @@ const styles = StyleSheet.create({
     fontSize: responsive(14, 12, 16),
     color: DARK,
   },
+  pendingImageThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: '#ddd',
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -357,6 +683,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#9f7f7f',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#ccb4b4',
   },
   input: {
     flex: 1,

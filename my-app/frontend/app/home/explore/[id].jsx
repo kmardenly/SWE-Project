@@ -325,7 +325,10 @@ export default function ExplorePhotoScreen() {
 
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: insets.bottom + responsive(140, 120, 170) },
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}>
@@ -513,7 +516,6 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: H_PAD,
-    paddingBottom: responsive(40, 28, 52),
     alignItems: 'center',
   },
 

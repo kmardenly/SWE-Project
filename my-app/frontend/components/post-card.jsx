@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tag: {
-    backgroundColor: '#adb0b1',
+    backgroundColor: '#fff2f5',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,

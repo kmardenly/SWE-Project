@@ -16,7 +16,7 @@ export function isUuid(value) {
 }
 
 function parseMessageContent(raw) {
-  const fallback = { text: String(raw || ''), image: null };
+  const fallback = { text: String(raw || ''), image: null, editedAt: null };
   if (typeof raw !== 'string') return fallback;
   try {
     const parsed = JSON.parse(raw);
@@ -24,6 +24,7 @@ function parseMessageContent(raw) {
       return {
         text: String(parsed.text || ''),
         image: parsed.image || null,
+        editedAt: parsed.editedAt || null,
       };
     }
     return fallback;
@@ -32,10 +33,11 @@ function parseMessageContent(raw) {
   }
 }
 
-function serializeMessageContent(text, image) {
+function serializeMessageContent(text, image, editedAt = null) {
   return JSON.stringify({
     text: String(text || ''),
     image: image || null,
+    editedAt: editedAt || null,
   });
 }
 
@@ -198,6 +200,27 @@ export async function markGroupChannelAsRead(userId, channelId) {
   }
 }
 
+/**
+ * Marks a channel as unread by moving read state to epoch.
+ * This makes every existing message count as unread.
+ */
+export async function markGroupChannelAsUnread(userId, channelId) {
+  if (!supabase || !userId || !channelId) {
+    return;
+  }
+  const { error } = await supabase.from('group_channel_read_state').upsert(
+    {
+      user_id: userId,
+      channel_id: channelId,
+      last_read_at: '1970-01-01T00:00:00.000Z',
+    },
+    { onConflict: 'user_id,channel_id' }
+  );
+  if (error) {
+    console.warn('[groupChats] markGroupChannelAsUnread upsert:', error.message);
+  }
+}
+
 export async function fetchGroupChats(currentUserId) {
   if (!supabase) return GROUP_CHATS;
 
@@ -307,6 +330,8 @@ export async function fetchGroupChats(currentUserId) {
       id: group.group_id,
       name: displayName,
       preview: parsed?.text || 'Start chatting...',
+      lastMessageAt: latestMessage?.created_at || null,
+      channelId: chId || null,
       memberCount: memberNames.length,
       unreadCount,
       coverImage: resolvedCoverImage || null,
@@ -329,7 +354,7 @@ export async function fetchGroupChats(currentUserId) {
     const chatId = String(chat.id || '');
     const nameKey = String(chat.name || '').trim().toLowerCase();
     return !existingKeys.has(chatId) && !existingNames.has(nameKey);
-  }).map((c) => ({ ...c, unreadCount: 0 }));
+  }).map((c) => ({ ...c, unreadCount: Number(c.unreadCount) || 0, channelId: c.channelId || null }));
 
   return [...dbChats, ...legacyChats];
   } catch (err) {
@@ -379,6 +404,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
       members: [],
       messages: [],
       memberUserIds: [],
+      memberRoles: [],
       channelId: null,
       settings: {
         description: metadata.description || '',
@@ -389,7 +415,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
 
   const { data: memberRows, error: membersError } = await supabase
     .from('group_members')
-    .select('user_id')
+    .select('user_id, role')
     .eq('group_id', group.group_id);
   if (membersError) throw membersError;
 
@@ -430,6 +456,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
       avatarUrl: avatarUrl || null,
       text: parsed.text || '',
       image: parsed.image || null,
+      editedAt: parsed.editedAt || null,
       userId: row.user_id,
       createdAt: row.created_at,
     };
@@ -439,10 +466,12 @@ export async function fetchGroupChat(chatId, currentUserId) {
     id: group.group_id,
     name: displayName,
     preview: messages.length ? messages[messages.length - 1].text : 'Start chatting...',
+    lastMessageAt: messages.length ? messages[messages.length - 1].createdAt : null,
     memberCount: members.length,
     coverImage: resolvedCoverImage || null,
     members,
     memberUserIds: (memberRows || []).map((row) => row.user_id),
+    memberRoles: (memberRows || []).map((row) => String(row.role || 'member')),
     messages,
     channelId: channel.channel_id,
     settings: {
@@ -486,7 +515,32 @@ export async function sendGroupMessage({ channelId, userId, text, image }) {
     avatarUrl: avatarUrl || null,
     text: parsed.text || '',
     image: parsed.image || null,
+    editedAt: parsed.editedAt || null,
     userId,
+    createdAt: data.created_at,
+  };
+}
+
+export async function updateGroupMessage({ messageId, text, image }) {
+  if (!supabase || !messageId) {
+    throw new Error('Missing message update data.');
+  }
+  const editedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('group_messages')
+    .update({
+      content: serializeMessageContent(String(text || '').trim(), image || null, editedAt),
+    })
+    .eq('message_id', messageId)
+    .select('message_id, content, created_at')
+    .single();
+  if (error) throw error;
+  const parsed = parseMessageContent(data.content);
+  return {
+    id: data.message_id,
+    text: parsed.text || '',
+    image: parsed.image || null,
+    editedAt: parsed.editedAt || editedAt,
     createdAt: data.created_at,
   };
 }
@@ -613,6 +667,27 @@ export async function addMembersToGroup({ groupId, userIds = [] }) {
     .upsert(rows, { onConflict: 'group_id,user_id', ignoreDuplicates: true });
   if (error) throw error;
   return uniqueIds.length;
+}
+
+export async function removeGroupMember({ groupId, userId }) {
+  if (!supabase || !groupId || !userId) throw new Error('Missing member removal data.');
+  const { error } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return true;
+}
+
+export async function deleteGroupMessage({ messageId }) {
+  if (!supabase || !messageId) throw new Error('Missing message delete data.');
+  const { error } = await supabase
+    .from('group_messages')
+    .delete()
+    .eq('message_id', messageId);
+  if (error) throw error;
+  return true;
 }
 
 export async function leaveGroup({ groupId, userId }) {
