@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: responsive(150, 130, 180),
     gap: 10,
   },
   profileCard: {

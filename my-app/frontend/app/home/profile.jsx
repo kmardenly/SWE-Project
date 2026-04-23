@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: H_PAD,
     paddingTop: 8,
-    paddingBottom: responsive(40, 28, 52),
+    paddingBottom: responsive(150, 130, 180),
   },
   profileHeaderRow: {
     flexDirection: 'row',

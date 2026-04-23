@@ -289,8 +289,13 @@ export default function HomeScreen() {
             resizeMode="cover"
             style={homeStyles.backgroundLayer}
         />
+        <Image
+            source={require('@/assets/images/my_craft_home_navbar.png')}
+            resizeMode="contain"
+            style={homeStyles.topTrim}
+        />
 
-        <View style={[homeStyles.headerOverlay, { top: insets.top + 10 }]}>
+        <View style={[homeStyles.headerOverlay, { top: insets.top + 6 }]}>
           <View style={homeStyles.header}>
             <View style={homeStyles.headerSideSpacer} />
             <View style={homeStyles.searchArea}>
@@ -335,11 +340,11 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={[homeStyles.foreground, { paddingTop: insets.top + 104 }]}>
+        <View style={[homeStyles.foreground, { paddingTop: insets.top + 80 }]}>
           <ScrollView
               ref={scrollRef}
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 24 }}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 130 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               refreshControl={
@@ -424,6 +429,12 @@ export default function HomeScreen() {
             notifications={notifications}
         />
         <StreakModal visible={streakVisible} onClose={() => setStreakVisible(false)} streak={5} />
+        <Pressable
+            style={[homeStyles.floatingPostButton, { bottom: insets.bottom + 88 }]}
+            onPress={() => router.push('/post')}
+        >
+          <Text style={homeStyles.floatingPostButtonText}>Post</Text>
+        </Pressable>
       </View>
   );
 }
