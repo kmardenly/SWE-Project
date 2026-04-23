@@ -37,6 +37,21 @@ const clamp = (min, preferred, max) => Math.max(min, Math.min(preferred, max));
 const responsive = (size, min, max) => clamp(min, (SCREEN_WIDTH / BASE_WIDTH) * size, max);
 const DARK = '#5c3d3d';
 
+function formatMessageTimestamp(value) {
+  if (!value) return '';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMessageDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const dayDiff = Math.round((startOfToday - startOfMessageDay) / 86400000);
+  const timePart = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (dayDiff === 0) return `Today at ${timePart}`;
+  if (dayDiff === 1) return `Yesterday at ${timePart}`;
+  const datePart = dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${datePart} at ${timePart}`;
+}
+
 export default function GroupChatDetailsScreen() {
   const params = useLocalSearchParams();
   const tabBarHeight = useBottomTabBarHeight();
@@ -187,6 +202,18 @@ export default function GroupChatDetailsScreen() {
   const composerBottomMargin = keyboardVisible ? 2 : tabBarHeight + 8;
   const isImageModalVisible = !!expandedImageUri;
 
+  const handleMessageAuthorPress = (messageUserId) => {
+    if (!messageUserId) return;
+    if (messageUserId === user?.id) {
+      router.push('/home/profile');
+      return;
+    }
+    router.push({
+      pathname: '/home/other.profile',
+      params: { userId: messageUserId },
+    });
+  };
+
   return (
     <View style={styles.root}>
       <Image
@@ -215,13 +242,27 @@ export default function GroupChatDetailsScreen() {
           showsVerticalScrollIndicator={false}>
           {sentMessages.map((message) => (
             <View key={message.id} style={styles.messageWrap}>
-              {message.avatarUrl ? (
-                <Image source={{ uri: message.avatarUrl }} style={styles.avatarDot} resizeMode="cover" />
-              ) : (
-                <View style={styles.avatarDot} />
-              )}
+              <Pressable onPress={() => handleMessageAuthorPress(message.userId)} hitSlop={8} disabled={!message.userId}>
+                {message.avatarUrl ? (
+                  <Image source={{ uri: message.avatarUrl }} style={styles.avatarDot} resizeMode="cover" />
+                ) : (
+                  <View style={styles.avatarDot} />
+                )}
+              </Pressable>
               <View style={styles.messageBlock}>
-                <Text style={styles.authorText}>{message.author}</Text>
+                <View style={styles.authorMetaRow}>
+                  <Pressable
+                    onPress={() => handleMessageAuthorPress(message.userId)}
+                    hitSlop={6}
+                    style={styles.authorPressable}
+                    disabled={!message.userId}
+                  >
+                    <Text style={styles.authorText}>{message.author}</Text>
+                  </Pressable>
+                  {message.createdAt ? (
+                    <Text style={styles.messageDateText}>{formatMessageTimestamp(message.createdAt)}</Text>
+                  ) : null}
+                </View>
                 <Text style={styles.messageText}>{message.text}</Text>
                 {message.image ? (
                   <Pressable onPress={() => setExpandedImageUri(message.image)} hitSlop={8}>
@@ -348,6 +389,23 @@ const styles = StyleSheet.create({
     color: DARK,
     fontSize: responsive(16, 14, 18),
     lineHeight: responsive(20, 18, 22),
+  },
+  authorPressable: {
+    alignSelf: 'flex-start',
+  },
+  authorMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  messageDateText: {
+    fontFamily: 'Gaegu',
+    color: '#8e7777',
+    fontSize: responsive(14, 12, 16),
+    lineHeight: responsive(16, 14, 18),
+    flexShrink: 1,
+    textAlign: 'right',
   },
   messageText: {
     fontFamily: 'Gaegu-Bold',

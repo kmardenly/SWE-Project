@@ -198,6 +198,27 @@ export async function markGroupChannelAsRead(userId, channelId) {
   }
 }
 
+/**
+ * Marks a channel as unread by moving read state to epoch.
+ * This makes every existing message count as unread.
+ */
+export async function markGroupChannelAsUnread(userId, channelId) {
+  if (!supabase || !userId || !channelId) {
+    return;
+  }
+  const { error } = await supabase.from('group_channel_read_state').upsert(
+    {
+      user_id: userId,
+      channel_id: channelId,
+      last_read_at: '1970-01-01T00:00:00.000Z',
+    },
+    { onConflict: 'user_id,channel_id' }
+  );
+  if (error) {
+    console.warn('[groupChats] markGroupChannelAsUnread upsert:', error.message);
+  }
+}
+
 export async function fetchGroupChats(currentUserId) {
   if (!supabase) return GROUP_CHATS;
 
@@ -307,6 +328,8 @@ export async function fetchGroupChats(currentUserId) {
       id: group.group_id,
       name: displayName,
       preview: parsed?.text || 'Start chatting...',
+      lastMessageAt: latestMessage?.created_at || null,
+      channelId: chId || null,
       memberCount: memberNames.length,
       unreadCount,
       coverImage: resolvedCoverImage || null,
@@ -329,7 +352,7 @@ export async function fetchGroupChats(currentUserId) {
     const chatId = String(chat.id || '');
     const nameKey = String(chat.name || '').trim().toLowerCase();
     return !existingKeys.has(chatId) && !existingNames.has(nameKey);
-  }).map((c) => ({ ...c, unreadCount: 0 }));
+  }).map((c) => ({ ...c, unreadCount: Number(c.unreadCount) || 0, channelId: c.channelId || null }));
 
   return [...dbChats, ...legacyChats];
   } catch (err) {
@@ -439,6 +462,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
     id: group.group_id,
     name: displayName,
     preview: messages.length ? messages[messages.length - 1].text : 'Start chatting...',
+    lastMessageAt: messages.length ? messages[messages.length - 1].createdAt : null,
     memberCount: members.length,
     coverImage: resolvedCoverImage || null,
     members,

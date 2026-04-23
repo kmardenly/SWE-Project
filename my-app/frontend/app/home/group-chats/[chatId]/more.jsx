@@ -69,6 +69,18 @@ export default function GroupChatMoreScreen() {
     ]);
   }
 
+  function handleMemberPress(memberUserId) {
+    if (!memberUserId) return;
+    if (memberUserId === user?.id) {
+      router.push('/home/profile');
+      return;
+    }
+    router.push({
+      pathname: '/home/other.profile',
+      params: { userId: memberUserId },
+    });
+  }
+
   if (!chat) {
     return (
       <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -118,12 +130,22 @@ export default function GroupChatMoreScreen() {
 
         <View style={styles.membersCard}>
           <View style={styles.membersContent}>
-          {chat.members.map((member) => (
-            <View key={member} style={styles.memberRow}>
-              <View style={styles.memberDot} />
-              <Text style={styles.memberName}>{member}</Text>
-            </View>
-          ))}
+          {chat.members.map((member, index) => {
+            const memberUserId = chat.memberUserIds?.[index];
+            return (
+              <Pressable
+                key={`${member}-${memberUserId || index}`}
+                style={styles.memberPressable}
+                onPress={() => handleMemberPress(memberUserId)}
+                disabled={!memberUserId}
+              >
+                <View style={styles.memberRow}>
+                  <View style={styles.memberDot} />
+                  <Text style={styles.memberName}>{member}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
           </View>
         </View>
 
@@ -218,6 +240,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  memberPressable: {
+    width: '100%',
   },
   memberDot: {
     width: 25,
