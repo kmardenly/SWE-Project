@@ -85,7 +85,7 @@ export default function GroupChatMoreScreen() {
         style={styles.backgroundLayer}
       />
 
-      <View style={styles.foreground}>
+      <ScrollView style={styles.foreground} contentContainerStyle={styles.foregroundContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={30} color={DARK} />
@@ -116,21 +116,23 @@ export default function GroupChatMoreScreen() {
           <Text style={styles.membersHeaderText}>Group Members | {chat.memberCount}</Text>
         </View>
 
-        <ScrollView style={styles.membersCard} contentContainerStyle={styles.membersContent}>
+        <View style={styles.membersCard}>
+          <View style={styles.membersContent}>
           {chat.members.map((member) => (
             <View key={member} style={styles.memberRow}>
               <View style={styles.memberDot} />
               <Text style={styles.memberName}>{member}</Text>
             </View>
           ))}
-        </ScrollView>
+          </View>
+        </View>
 
         <View style={styles.settingsCard}>
           <Text style={styles.settingsTitle}>Customization</Text>
           <SettingsRow icon="document-text-outline" label="Description" value={chat.settings.description} />
           <SettingsRow icon="notifications-outline" label="Mute" value={chat.settings.isMuted ? 'On' : 'Off'} />
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -147,6 +149,8 @@ const styles = StyleSheet.create({
   },
   foreground: {
     flex: 1,
+  },
+  foregroundContent: {
     paddingTop: responsive(58, 48, 70),
     paddingHorizontal: 24,
     paddingBottom: 18,
@@ -199,7 +203,6 @@ const styles = StyleSheet.create({
     color: '#6c5656',
   },
   membersCard: {
-    flex: 1,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#c9b69e',
