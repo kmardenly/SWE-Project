@@ -145,6 +145,59 @@ async function ensureGeneralChannel(groupId) {
   return null;
 }
 
+async function fetchUnreadCountsByChannelIds(channelIds) {
+  const map = new Map();
+  if (!supabase || !channelIds?.length) {
+    return map;
+  }
+  const { data, error } = await supabase.rpc('get_group_unread_counts', {
+    p_channel_ids: channelIds,
+  });
+  if (error) {
+    console.warn('[groupChats] get_group_unread_counts:', error.message);
+    return map;
+  }
+  for (const row of data || []) {
+    if (row?.channel_id != null) {
+      map.set(String(row.channel_id), Number(row.unread_count) || 0);
+    }
+  }
+  return map;
+}
+
+/**
+ * Marks the channel as read through the latest message (or now if empty).
+ * Call when the user opens a group / DM chat.
+ */
+export async function markGroupChannelAsRead(userId, channelId) {
+  if (!supabase || !userId || !channelId) {
+    return;
+  }
+  const { data: lastRow, error: lastErr } = await supabase
+    .from('group_messages')
+    .select('created_at')
+    .eq('channel_id', channelId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastErr) {
+    console.warn('[groupChats] markGroupChannelAsRead last message:', lastErr.message);
+    return;
+  }
+  const lastRead = lastRow?.created_at || new Date().toISOString();
+  const { error } = await supabase.from('group_channel_read_state').upsert(
+    {
+      user_id: userId,
+      channel_id: channelId,
+      last_read_at: lastRead,
+    },
+    { onConflict: 'user_id,channel_id' }
+  );
+  if (error) {
+    console.warn('[groupChats] markGroupChannelAsRead upsert:', error.message);
+  }
+}
+
 export async function fetchGroupChats(currentUserId) {
   if (!supabase) return GROUP_CHATS;
 
@@ -225,6 +278,11 @@ export async function fetchGroupChats(currentUserId) {
     return acc;
   }, {});
 
+  const channelIdList = visibleGroups
+    .map((g) => channelByGroup.get(g.group_id)?.channel_id)
+    .filter(Boolean);
+  const unreadByChannel = await fetchUnreadCountsByChannelIds(channelIdList);
+
   const dbChats = await Promise.all(visibleGroups.map(async (group) => {
     const channel = channelByGroup.get(group.group_id);
     const latestMessage = channel ? latestMessageByChannel.get(channel.channel_id) : null;
@@ -243,11 +301,14 @@ export async function fetchGroupChats(currentUserId) {
     const resolvedCoverImage = isDirect
       ? await resolveAvatarUrl(otherUser?.avatar_url || '')
       : await resolveGroupImageUrl(metadata.image);
+    const chId = channel?.channel_id;
+    const unreadCount = chId != null ? (unreadByChannel.get(String(chId)) ?? 0) : 0;
     return {
       id: group.group_id,
       name: displayName,
       preview: parsed?.text || 'Start chatting...',
       memberCount: memberNames.length,
+      unreadCount,
       coverImage: resolvedCoverImage || null,
       members: memberNames,
       messages: [],
@@ -268,7 +329,7 @@ export async function fetchGroupChats(currentUserId) {
     const chatId = String(chat.id || '');
     const nameKey = String(chat.name || '').trim().toLowerCase();
     return !existingKeys.has(chatId) && !existingNames.has(nameKey);
-  });
+  }).map((c) => ({ ...c, unreadCount: 0 }));
 
   return [...dbChats, ...legacyChats];
   } catch (err) {

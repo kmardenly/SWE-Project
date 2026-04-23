@@ -107,7 +107,11 @@ export default function GroupChatsScreen() {
                   {chat.preview}
                 </Text>
               </View>
-              <Text style={styles.memberText}>{chat.memberCount}</Text>
+              {Number(chat.unreadCount) > 0 ? (
+                <Text style={styles.unreadBadge}>
+                  {Number(chat.unreadCount) > 99 ? '99+' : String(chat.unreadCount)}
+                </Text>
+              ) : null}
             </Pressable>
           ))}
 
@@ -228,10 +232,12 @@ const styles = StyleSheet.create({
     lineHeight: responsive(22, 18, 26),
     marginTop: 2,
   },
-  memberText: {
+  unreadBadge: {
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(28, 20, 32),
-    color: '#7f6a6a',
+    color: '#5c3d3d',
+    minWidth: responsive(28, 22, 34),
+    textAlign: 'right',
   },
   emptyText: {
     fontFamily: 'Gaegu-Bold',

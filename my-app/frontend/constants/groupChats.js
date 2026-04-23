@@ -4,6 +4,7 @@ export const GROUP_CHATS = [
     name: 'The Big Cats GC',
     preview: 'Does anyone know where to get paint?',
     memberCount: 42,
+    unreadCount: 0,
     coverImage: null,
     members: ['Abby', 'Mina', 'Leo', 'Kay', 'Nora', 'Eli'],
     messages: [
@@ -21,6 +22,7 @@ export const GROUP_CHATS = [
     name: 'Crochet Club',
     preview: 'I found a pastel yarn sale!',
     memberCount: 18,
+    unreadCount: 0,
     coverImage: null,
     members: ['Jules', 'Nina', 'Rose'],
     messages: [
@@ -37,6 +39,7 @@ export const GROUP_CHATS = [
     name: 'Pottery Friends',
     preview: 'Who is free for wheel practice this weekend?',
     memberCount: 12,
+    unreadCount: 0,
     coverImage: null,
     members: ['Ivy', 'Mara', 'Sage'],
     messages: [

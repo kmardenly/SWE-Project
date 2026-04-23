@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,11 +13,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '@/context/UserContext';
 
-import { fetchGroupChat, normalizeRouteChatId, sendGroupMessage } from '@/lib/groupChats.service';
+import {
+  fetchGroupChat,
+  markGroupChannelAsRead,
+  normalizeRouteChatId,
+  sendGroupMessage,
+} from '@/lib/groupChats.service';
 import {
   pickChatImageFromLibrary,
   resolveChatImageUriForMessage,
@@ -73,6 +78,14 @@ export default function GroupChatDetailsScreen() {
       mounted = false;
     };
   }, [chatId, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (chat?.channelId && user?.id) {
+        void markGroupChannelAsRead(user.id, chat.channelId);
+      }
+    }, [chat?.channelId, user?.id])
+  );
 
   if (loadError) {
     return (
@@ -138,6 +151,9 @@ export default function GroupChatDetailsScreen() {
 
       if (created) {
         setSentMessages((prev) => [...prev, created]);
+        if (user?.id && chat?.channelId) {
+          await markGroupChannelAsRead(user.id, chat.channelId);
+        }
       }
       setMessageText('');
       setPendingImage(null);
