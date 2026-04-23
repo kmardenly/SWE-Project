@@ -6,6 +6,7 @@ Mycraft is a social platform for crafters!
 Technical Details
 
 Our platform was built in JavaScript, using a React Native (Expo) frontend, Supabase backend, and Docker Desktop to connect the two together. Data is stored in a Supabase PostgreSQL database, with separate tables for users, posts, followers, and related media. User Auth is also done through Supabase Auth (then login information is stored in the appropriate tables).
+
 =================================================
 Installation Instructions
 
@@ -55,8 +56,9 @@ cd my-app
 cd frontend
 
 npx expo start
-=================================================
+-------------------------------------------------
 Debugging: 
+
 If the project installed 15000 new files to the project folders, you may have done npm install in the wrong folder. Ensure you're in the frontend folder before you check to install npm packages.
 Do the command npx supabase stop --force if you are facing supabase issues. 
 For an “enonent” error, npm error enoent ENOENT: no such file or directory, lstat 'C:\Users\lilly\AppData\Roaming\npm' do the following: 
@@ -64,8 +66,10 @@ Press Win + R, type %AppData%, and hit Enter.
 Check if there is a folder named npm.
 If it’s missing, create a new folder and name it exactly npm.
 Try running npx supabase again.
-=================================================
+
+-------------------------------------------------
 Command cheatsheet: 
+
 w- launch web view | opens a localhost port to run your app
 r - reload app | If you set up the frontend before the backend, you don’t have to restart, this will reload the backend and front end. 
 Ctrl + c - exit |  exits the current running instance of the front end, you don’t have to kill the backend. Only kill the backend when you are completely done with your session to save time.
@@ -73,6 +77,7 @@ npx supabase stop --force | forcibly stops Supabase to check if you have existin
 npx supabase db push | (from my-app/backend) apply SQL migrations in my-app/backend/supabase/migrations to the linked project
 npx supabase db push --include-all | use when a new migration’s timestamp is earlier than the latest one already on the remote (rare; see Supabase docs)
 npx supabase migration list | show which migration files are applied on the linked remote
+
 =================================================
 Login and Access Credentials and API Keys:
 
@@ -80,6 +85,7 @@ The only API Keys our platform uses are from Supabase, and the relevant ones hav
 VITE_SUPABASE securely connects our frontend to Supabase
 SUPABASE_SERVICE_ROLE is used for backend/server-only operations (this key is sensitive and can only exist in the .env.local folder in ../backend/)
 EXPO_PUBLIC_SUPABASE is used to connect the Expo app to Supabase
+
 =================================================
 New accounts can be made by running the platform, but we also have an alternative test account:
 Email: lilly@test.com
