@@ -285,68 +285,57 @@ export default function HomeScreen() {
   return (
       <View style={homeStyles.container}>
         <Image
-            source={require('@/assets/images/explore_background.png')}
+        source={require('@/assets/images/home_bg.png')}
             resizeMode="cover"
             style={homeStyles.backgroundLayer}
-        />
-        <Image
-            source={require('@/assets/images/home_top_trim_updated.png')}
-            resizeMode="cover"
-            style={homeStyles.topTrim}
         />
 
         <View style={[homeStyles.headerOverlay, { top: insets.top + 10 }]}>
           <View style={homeStyles.header}>
-            <View style={homeStyles.titlePill}>
-              <Text style={homeStyles.title}>My Craft</Text>
-            </View>
-
-            <View style={homeStyles.headerRight}>
-              <View style={homeStyles.searchArea}>
-                <View style={homeStyles.searchContainer}>
-                  <Ionicons name="search-outline" size={16} color="#8f7d7d" />
-                  <TextInput
-                      style={homeStyles.searchInput}
-                      placeholder="search bar"
-                      placeholderTextColor="#8f7d7d"
-                      value={draftQuery}
-                      onChangeText={handleChangeText}
-                      onSubmitEditing={handleSubmitSearch}
-                      returnKeyType="search"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      blurOnSubmit={false}
-                  />
-                  {draftQuery.length > 0 || selectedDraftTags.length > 0 ? (
-                      <Pressable onPress={handleClearSearch} hitSlop={8}>
-                        <Ionicons name="close-circle" size={16} color="#8f7d7d" />
-                      </Pressable>
-                  ) : null}
-                </View>
-
-                <SearchSuggestions
-                    visible={showSuggestions}
-                    loading={suggestionsLoading}
-                    users={userSuggestions}
-                    tags={tagSuggestions}
-                    onUserPress={handleUserPress}
-                    onTagPress={handleTagPress}
+            <View style={homeStyles.headerSideSpacer} />
+            <View style={homeStyles.searchArea}>
+              <View style={homeStyles.searchContainer}>
+                <Ionicons name="search-outline" size={16} color="#8f7d7d" />
+                <TextInput
+                    style={homeStyles.searchInput}
+                    placeholder="search bar"
+                    placeholderTextColor="#8f7d7d"
+                    value={draftQuery}
+                    onChangeText={handleChangeText}
+                    onSubmitEditing={handleSubmitSearch}
+                    returnKeyType="search"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    blurOnSubmit={false}
                 />
-
-                <SearchTagChips
-                    tags={selectedDraftTags}
-                    onRemove={handleRemoveTag}
-                />
+                {draftQuery.length > 0 || selectedDraftTags.length > 0 ? (
+                    <Pressable onPress={handleClearSearch} hitSlop={8}>
+                      <Ionicons name="close-circle" size={16} color="#8f7d7d" />
+                    </Pressable>
+                ) : null}
               </View>
 
-              <Pressable style={homeStyles.logoutIconButton} onPress={handleLogout} hitSlop={8}>
-                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
-              </Pressable>
+              <SearchSuggestions
+                  visible={showSuggestions}
+                  loading={suggestionsLoading}
+                  users={userSuggestions}
+                  tags={tagSuggestions}
+                  onUserPress={handleUserPress}
+                  onTagPress={handleTagPress}
+              />
+
+              <SearchTagChips
+                  tags={selectedDraftTags}
+                  onRemove={handleRemoveTag}
+              />
             </View>
+            <Pressable style={homeStyles.logoutIconButton} onPress={handleLogout} hitSlop={8}>
+              <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+            </Pressable>
           </View>
         </View>
 
-        <View style={[homeStyles.foreground, { paddingTop: insets.top + 80 }]}>
+        <View style={[homeStyles.foreground, { paddingTop: insets.top + 104 }]}>
           <ScrollView
               ref={scrollRef}
               style={{ flex: 1 }}

@@ -31,7 +31,8 @@ export const homeStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    gap: 8,
   },
   titlePill: {
     backgroundColor: '#e2e2e2',
@@ -47,14 +48,17 @@ export const homeStyles = StyleSheet.create({
     gap: 8,
     flex: 1,
   },
+  headerSideSpacer: {
+    width: 38,
+    height: 38,
+  },
   title: {
     fontFamily: 'Gaegu-Bold',
     fontSize: 24,
     color: '#5c3d3d',
   },
   searchContainer: {
-    flex: 1,
-    marginRight: 4,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f2e9e9',
@@ -77,7 +81,10 @@ export const homeStyles = StyleSheet.create({
     outlineStyle: 'none',
   },
   searchArea: {
-    flex: 1,
+    width: '52%',
+    minWidth: 150,
+    maxWidth: 240,
+    marginLeft: 12,
     zIndex: 20,
   },
   subtitle: {
