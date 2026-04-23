@@ -195,7 +195,7 @@ export default function GroupChatDetailsScreen() {
       <KeyboardAvoidingView
         style={styles.foreground}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={30} color={DARK} />
