@@ -164,10 +164,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabBarBackground: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-    top: 0,
+    position: 'absolute',
+    width: '106%',
+    height: '112%',
+    top: -6,
+    left: '-3%',
     resizeMode: 'stretch',
   },
   tabBarLabel: {
