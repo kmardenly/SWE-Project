@@ -132,6 +132,7 @@ export default function GroupChatMoreScreen() {
           <View style={styles.membersContent}>
           {chat.members.map((member, index) => {
             const memberUserId = chat.memberUserIds?.[index];
+            const memberRole = String(chat.memberRoles?.[index] || 'member');
             return (
               <Pressable
                 key={`${member}-${memberUserId || index}`}
@@ -142,6 +143,9 @@ export default function GroupChatMoreScreen() {
                 <View style={styles.memberRow}>
                   <View style={styles.memberDot} />
                   <Text style={styles.memberName}>{member}</Text>
+                  {memberRole === 'admin' ? (
+                    <Ionicons name="star" size={18} color="#d4a21e" style={styles.adminStar} />
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -254,6 +258,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(39, 24, 43),
     color: DARK,
+  },
+  adminStar: {
+    marginLeft: 4,
   },
   settingsCard: {
     borderWidth: 1,

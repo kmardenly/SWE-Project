@@ -402,6 +402,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
       members: [],
       messages: [],
       memberUserIds: [],
+      memberRoles: [],
       channelId: null,
       settings: {
         description: metadata.description || '',
@@ -412,7 +413,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
 
   const { data: memberRows, error: membersError } = await supabase
     .from('group_members')
-    .select('user_id')
+    .select('user_id, role')
     .eq('group_id', group.group_id);
   if (membersError) throw membersError;
 
@@ -467,6 +468,7 @@ export async function fetchGroupChat(chatId, currentUserId) {
     coverImage: resolvedCoverImage || null,
     members,
     memberUserIds: (memberRows || []).map((row) => row.user_id),
+    memberRoles: (memberRows || []).map((row) => String(row.role || 'member')),
     messages,
     channelId: channel.channel_id,
     settings: {
