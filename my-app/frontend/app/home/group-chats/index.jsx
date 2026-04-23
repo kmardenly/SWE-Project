@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 22,
-    paddingBottom: 14,
+    paddingBottom: responsive(150, 130, 180),
     gap: 12,
   },
   chatCard: {

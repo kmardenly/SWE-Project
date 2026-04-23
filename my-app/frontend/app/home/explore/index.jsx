@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchExploreItems } from '@/constants/exploreItems';
 import { filterPostsBySearch } from '@/FE-services/search.service';
@@ -71,6 +72,7 @@ function CraftCard({ item }) {
 }
 
 export default function ExploreScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const qParam = Array.isArray(params.q) ? params.q[0] : params.q;
   const tagsParam = Array.isArray(params.tags) ? params.tags[0] : params.tags;
@@ -294,6 +296,12 @@ export default function ExploreScreen() {
               </Pressable>
           )}
         </View>
+        <Pressable
+            style={[styles.floatingPostButton, { bottom: insets.bottom + 88 }]}
+            onPress={() => router.push('/post')}
+        >
+          <Text style={styles.floatingPostButtonText}>Post</Text>
+        </Pressable>
       </View>
   );
 }
@@ -377,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingHorizontal: H_PAD,
     paddingTop: 8,
-    paddingBottom: responsive(32, 24, 48),
+    paddingBottom: responsive(150, 130, 180),
     gap: COLUMN_GAP,
   },
   column: {
@@ -413,5 +421,29 @@ const styles = StyleSheet.create({
     fontSize: responsive(20, 17, 24),
     color: DARK,
     paddingTop: 8,
+  },
+  floatingPostButton: {
+    position: 'absolute',
+    right: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    height: 52,
+    borderWidth: 1,
+    borderColor: '#e3d3d3',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 4,
+    zIndex: 30,
+  },
+  floatingPostButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(24, 21, 27),
+    color: '#5c3d3d',
+    lineHeight: responsive(26, 23, 29),
   },
 });

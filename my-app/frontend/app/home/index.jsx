@@ -429,6 +429,12 @@ export default function HomeScreen() {
             notifications={notifications}
         />
         <StreakModal visible={streakVisible} onClose={() => setStreakVisible(false)} streak={5} />
+        <Pressable
+            style={[homeStyles.floatingPostButton, { bottom: insets.bottom + 88 }]}
+            onPress={() => router.push('/post')}
+        >
+          <Text style={homeStyles.floatingPostButtonText}>Post</Text>
+        </Pressable>
       </View>
   );
 }
