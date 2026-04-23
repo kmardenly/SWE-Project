@@ -605,6 +605,22 @@ export async function getPostSaveSummary(postId, userId) {
     savedByCurrentUser: !!savedRow,
   };
 }
+
+export async function getCurrentUserIsAppAdmin() {
+  if (!supabase) {
+    return false;
+  }
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData?.user?.id) {
+    return false;
+  }
+  const { data, error } = await supabase.rpc('is_app_admin');
+  if (error) {
+    return false;
+  }
+  return data === true;
+}
+
 export async function deletePostById(postId, userId) {
   if (!supabase || !postId || !userId) {
     throw new Error('Missing post or user information for delete action.');
@@ -618,6 +634,9 @@ export async function deletePostById(postId, userId) {
     throw new Error('No active auth session. Please log in again and retry.');
   }
 
+  const { data: isAppAdmin, error: adminError } = await supabase.rpc('is_app_admin');
+  if (adminError) throw adminError;
+
   const { data: post, error: readError } = await supabase
     .from('posts')
     .select('post_id, creator_id, deleted_at')
@@ -625,7 +644,7 @@ export async function deletePostById(postId, userId) {
     .maybeSingle();
   if (readError) throw readError;
   if (!post) throw new Error('Post not found.');
-  if (post.creator_id !== authUserId) {
+  if (post.creator_id !== authUserId && isAppAdmin !== true) {
     throw new Error('You can only delete your own posts.');
   }
   if (userId !== authUserId) {

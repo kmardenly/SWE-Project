@@ -19,6 +19,7 @@ import {
   createPostComment,
   deletePostById,
   fetchExploreItemById,
+  getCurrentUserIsAppAdmin,
   getPostComments,
   getPostSaveSummary,
   getPostLikeSummary,
@@ -61,6 +62,22 @@ export default function ExplorePhotoScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [deletingPost, setDeletingPost] = useState(false);
+  const [isAppAdmin, setIsAppAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!user?.id) {
+        if (active) setIsAppAdmin(false);
+        return;
+      }
+      const next = await getCurrentUserIsAppAdmin();
+      if (active) setIsAppAdmin(!!next);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -182,7 +199,12 @@ export default function ExplorePhotoScreen() {
 
   async function handleDeletePost() {
     if (!item?.id || !user?.id || deletingPost) return;
-    Alert.alert('Delete post', 'Are you sure you want to delete this post?', [
+    const isOwner = item.creatorId === user.id;
+    const title = isOwner ? 'Delete post' : 'Delete post (moderator)';
+    const message = isOwner
+      ? 'Are you sure you want to delete this post?'
+      : 'This was posted by another user. Remove it anyway?';
+    Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -203,7 +225,7 @@ export default function ExplorePhotoScreen() {
   }
 
   function handleOpenPostMenu() {
-    if (!isOwnPost) return;
+    if (!canManagePost) return;
     Alert.alert('Post options', 'Choose an action', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -213,6 +235,9 @@ export default function ExplorePhotoScreen() {
       },
     ]);
   }
+
+  const isOwnPost = Boolean(user?.id && item && item.creatorId === user.id);
+  const canManagePost = isOwnPost || (!!item && isAppAdmin);
 
   if (loading || !item) return null;
 
@@ -232,7 +257,6 @@ export default function ExplorePhotoScreen() {
           postDate.getFullYear()
         ).slice(-2)}`
       : '';
-  const isOwnPost = !!user?.id && item.creatorId === user.id;
   const handleBackPress = () => {
     if (fromRoute === 'home') {
       router.replace({
@@ -285,7 +309,7 @@ export default function ExplorePhotoScreen() {
                 <Ionicons name="chevron-back" size={responsive(28, 24, 32)} color={DARK} />
               </Pressable>
               <View style={styles.topBarSpacer} />
-              {isOwnPost ? (
+              {canManagePost ? (
                 <Pressable
                   onPress={handleOpenPostMenu}
                   style={({ pressed }) => [styles.moreBtn, pressed && styles.backBtnPressed]}

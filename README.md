@@ -70,6 +70,9 @@ w- launch web view | opens a localhost port to run your app
 r - reload app | If you set up the frontend before the backend, you don’t have to restart, this will reload the backend and front end. 
 Ctrl + c - exit |  exits the current running instance of the front end, you don’t have to kill the backend. Only kill the backend when you are completely done with your session to save time.
 npx supabase stop --force | forcibly stops Supabase to check if you have existing instances
+npx supabase db push | (from my-app/backend) apply SQL migrations in my-app/backend/supabase/migrations to the linked project
+npx supabase db push --include-all | use when a new migration’s timestamp is earlier than the latest one already on the remote (rare; see Supabase docs)
+npx supabase migration list | show which migration files are applied on the linked remote
 =================================================
 Login and Access Credentials and API Keys:
 
