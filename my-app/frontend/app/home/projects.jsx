@@ -7,116 +7,8 @@ import * as ImagePicker from 'expo-image-picker';
 
 const TABS = ['projects', 'inspirations', 'lists'];
 
-const PROJECT_LIBRARY = [
-  {
-    id: 'cat-bag',
-    name: 'Cat Bag',
-    lastEditedAt: Date.now() - 45 * 1000,
-    cover:
-      'https://images.unsplash.com/photo-1593998066526-65fcab3021a2?auto=format&fit=crop&w=700&q=80',
-    folders: [
-      {
-        id: 'references',
-        name: 'References',
-        lastEditedAt: Date.now() - 5 * 60 * 60 * 1000,
-        files: [
-          'https://images.unsplash.com/photo-1611339555312-e607c8352fd7?auto=format&fit=crop&w=600&q=80',
-          'https://images.unsplash.com/photo-1604881991720-f91add269bed?auto=format&fit=crop&w=600&q=80',
-        ],
-      },
-      {
-        id: 'progress',
-        name: 'Progress',
-        lastEditedAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-        files: ['https://images.unsplash.com/photo-1582562124811-c09040d0a901?auto=format&fit=crop&w=600&q=80'],
-      },
-    ],
-    pageElements: [
-      { id: 'cat-date', type: 'text', content: '4/23\nStarted the project', x: 195, y: 70, width: 150, height: 75 },
-      { id: 'cat-note', type: 'text', content: 'Today I finished making the legs', x: 22, y: 220, width: 280, height: 50 },
-      { id: 'cat-note-2', type: 'text', content: 'This is\nwhat it looks\nlike.', x: 24, y: 300, width: 120, height: 94 },
-      {
-        id: 'cat-photo-main',
-        type: 'photo',
-        content: 'https://images.unsplash.com/photo-1617953141905-b27fb3d64969?auto=format&fit=crop&w=700&q=80',
-        x: 20,
-        y: 70,
-        width: 150,
-        height: 150,
-      },
-      {
-        id: 'cat-photo-side',
-        type: 'photo',
-        content: 'https://images.unsplash.com/photo-1456324504439-367cee3b3c32?auto=format&fit=crop&w=700&q=80',
-        x: 175,
-        y: 300,
-        width: 190,
-        height: 130,
-      },
-      { id: 'cat-inspo-label', type: 'text', content: 'Inspiration:', x: 135, y: 465, width: 130, height: 28 },
-    ],
-  },
-  {
-    id: 'crochet',
-    name: 'Crochet',
-    lastEditedAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
-    cover:
-      'https://images.unsplash.com/photo-1611464907290-3e9ea6cc1976?auto=format&fit=crop&w=700&q=80',
-    folders: [
-      {
-        id: 'materials',
-        name: 'Materials',
-        lastEditedAt: Date.now() - 22 * 24 * 60 * 60 * 1000,
-        files: ['https://images.unsplash.com/photo-1595341888016-a392ef81b7de?auto=format&fit=crop&w=600&q=80'],
-      },
-      {
-        id: 'patterns',
-        name: 'Patterns',
-        lastEditedAt: Date.now() - 3 * 60 * 60 * 1000,
-        files: ['https://images.unsplash.com/photo-1518644961665-ed172691aaa1?auto=format&fit=crop&w=600&q=80'],
-      },
-    ],
-    pageElements: [
-      { id: 'cro-1', type: 'text', content: 'Idea sketch v2', x: 25, y: 50, width: 180, height: 38 },
-      {
-        id: 'cro-2',
-        type: 'photo',
-        content: 'https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?auto=format&fit=crop&w=700&q=80',
-        x: 20,
-        y: 120,
-        width: 170,
-        height: 130,
-      },
-    ],
-  },
-  {
-    id: 'knitting',
-    name: 'Knitting',
-    lastEditedAt: Date.now() - 4 * 30 * 24 * 60 * 60 * 1000,
-    cover:
-      'https://images.unsplash.com/photo-1544717302-de2939b7ef71?auto=format&fit=crop&w=700&q=80',
-    folders: [
-      {
-        id: 'color-tests',
-        name: 'Color Tests',
-        lastEditedAt: Date.now() - 15 * 1000,
-        files: ['https://images.unsplash.com/photo-1460788150444-89cd7514fd66?auto=format&fit=crop&w=600&q=80'],
-      },
-    ],
-    pageElements: [
-      { id: 'kni-1', type: 'text', content: 'Need warmer colors for this one', x: 28, y: 70, width: 220, height: 42 },
-      {
-        id: 'kni-2',
-        type: 'photo',
-        content: 'https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=700&q=80',
-        x: 24,
-        y: 150,
-        width: 170,
-        height: 140,
-      },
-    ],
-  },
-];
+const STAR_STICKER_URI =
+  'file:///C:/Users/lilly/.cursor/projects/c-Users-lilly-ClionProjects-DSA-SWE-Project/assets/c__Users_lilly_AppData_Roaming_Cursor_User_workspaceStorage_ef69fe16c5f589082409f582d9787afb_images_star_sticker-1da366ce-3b8a-4e0b-842e-938aefe0c650.png';
 
 function formatLastEdited(lastEditedAt) {
   const diffSeconds = Math.max(1, Math.floor((Date.now() - lastEditedAt) / 1000));
@@ -377,19 +269,17 @@ export default function ProjectsScreen() {
   const [selectedPhotoElementId, setSelectedPhotoElementId] = useState(null);
   const [selectedPhotoInteractionMode, setSelectedPhotoInteractionMode] = useState('static');
   const [elementMenuVisible, setElementMenuVisible] = useState(false);
+  const [projectEditorVisible, setProjectEditorVisible] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState(null);
+  const [draftProjectName, setDraftProjectName] = useState('');
+  const [draftProjectCover, setDraftProjectCover] = useState('');
+  const [draftProjectCompleted, setDraftProjectCompleted] = useState(false);
   const [isDraggingElement, setIsDraggingElement] = useState(false);
-  const [projectElements, setProjectElements] = useState(() =>
-    PROJECT_LIBRARY.reduce((acc, project) => {
-      acc[project.id] = project.pageElements || [];
-      return acc;
-    }, {})
-  );
+  const [projects, setProjects] = useState([]);
+  const [projectElements, setProjectElements] = useState({});
   const canvasTapGuard = useRef(false);
 
-  const openProject = useMemo(
-    () => PROJECT_LIBRARY.find((project) => project.id === openProjectId) || null,
-    [openProjectId]
-  );
+  const openProject = useMemo(() => projects.find((project) => project.id === openProjectId) || null, [projects, openProjectId]);
   const openFolder = useMemo(
     () => openProject?.folders.find((folder) => folder.id === openFolderId) || null,
     [openProject, openFolderId]
@@ -417,7 +307,7 @@ export default function ProjectsScreen() {
     if (!permission.granted) return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.9,
     });
@@ -425,6 +315,69 @@ export default function ProjectsScreen() {
     if (!result.canceled && result.assets?.length) {
       setDraftPhotoUri(result.assets[0].uri);
     }
+  };
+
+  const openProjectEditor = (project = null) => {
+    setEditingProjectId(project?.id || null);
+    setDraftProjectName(project?.name || '');
+    setDraftProjectCover(project?.cover || '');
+    setDraftProjectCompleted(Boolean(project?.completed));
+    setProjectEditorVisible(true);
+  };
+
+  const pickProjectCoverFromLibrary = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.9,
+    });
+
+    if (!result.canceled && result.assets?.length) {
+      setDraftProjectCover(result.assets[0].uri);
+    }
+  };
+
+  const saveProject = () => {
+    const trimmedName = draftProjectName.trim() || 'Untitled project';
+    const now = Date.now();
+    const fallbackCover =
+      'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=700&q=80';
+
+    if (editingProjectId) {
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === editingProjectId
+            ? {
+                ...project,
+                name: trimmedName,
+                cover: draftProjectCover || project.cover || fallbackCover,
+                completed: draftProjectCompleted,
+                lastEditedAt: now,
+              }
+            : project
+        )
+      );
+      setProjectEditorVisible(false);
+      return;
+    }
+
+    const id = `project-${Date.now()}`;
+    setProjects((prev) => [
+      ...prev,
+      {
+        id,
+        name: trimmedName,
+        completed: draftProjectCompleted,
+        lastEditedAt: now,
+        cover: draftProjectCover || fallbackCover,
+        folders: [],
+      },
+    ]);
+    setProjectElements((prev) => ({ ...prev, [id]: [] }));
+    setProjectEditorVisible(false);
   };
 
   const updateOpenProjectElement = (elementId, patch) => {
@@ -485,15 +438,28 @@ export default function ProjectsScreen() {
   };
 
   const renderProjectsRoot = () => (
-    <View style={styles.gridWrap}>
-      {PROJECT_LIBRARY.map((project) => (
-        <Pressable key={project.id} style={styles.projectCard} onPress={() => setOpenProjectId(project.id)}>
+    <Pressable style={styles.gridWrap} onLongPress={() => openProjectEditor()} delayLongPress={320}>
+      {projects.length === 0 ? (
+        <View style={styles.emptyProjectsCard}>
+          <Text style={styles.emptyProjectsTitle}>No projects yet</Text>
+          <Text style={styles.emptyProjectsBody}>Press and hold to create your first project.</Text>
+        </View>
+      ) : null}
+      {projects.map((project) => (
+        <Pressable
+          key={project.id}
+          style={styles.projectCard}
+          onPress={() => setOpenProjectId(project.id)}
+          onLongPress={() => openProjectEditor(project)}
+          delayLongPress={320}
+        >
           <Image source={{ uri: project.cover }} style={styles.projectThumb} />
+          {project.completed ? <Image source={{ uri: STAR_STICKER_URI }} style={styles.completedSticker} /> : null}
           <Text style={styles.projectLabel}>{project.name}</Text>
           <Text style={styles.lastEditedText}>last edited {formatLastEdited(project.lastEditedAt)}</Text>
         </Pressable>
       ))}
-    </View>
+    </Pressable>
   );
 
   const renderOpenProject = () => (
@@ -716,6 +682,52 @@ export default function ProjectsScreen() {
       </Modal>
 
       <Modal
+        visible={projectEditorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProjectEditorVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={Keyboard.dismiss}>
+          <Pressable style={styles.composerCard} onPress={() => {}}>
+            <Text style={styles.composerTitle}>{editingProjectId ? 'Edit project' : 'Create project'}</Text>
+            <TextInput
+              style={styles.composerInput}
+              placeholder="Project name"
+              placeholderTextColor="#9e8888"
+              value={draftProjectName}
+              onChangeText={setDraftProjectName}
+              returnKeyType="done"
+            />
+            <Pressable style={styles.photoChoiceButton} onPress={pickProjectCoverFromLibrary}>
+              <Text style={styles.photoChoiceText}>
+                {draftProjectCover ? 'Change cover photo' : 'Choose cover from album'}
+              </Text>
+            </Pressable>
+            {draftProjectCover ? <Image source={{ uri: draftProjectCover }} style={styles.photoPreview} /> : null}
+            <Pressable
+              style={styles.completeToggle}
+              onPress={() => setDraftProjectCompleted((prev) => !prev)}
+            >
+              <Ionicons
+                name={draftProjectCompleted ? 'checkbox' : 'square-outline'}
+                size={18}
+                color="#6c5155"
+              />
+              <Text style={styles.completeToggleText}>Mark as complete</Text>
+            </Pressable>
+            <View style={styles.composerActions}>
+              <Pressable style={styles.composerCancel} onPress={() => setProjectEditorVisible(false)}>
+                <Text style={styles.composerCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.composerSave} onPress={saveProject}>
+                <Text style={styles.composerSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={composerVisible}
         transparent
         animationType="fade"
@@ -852,6 +864,7 @@ const styles = StyleSheet.create({
   projectCard: {
     width: '47%',
     marginBottom: 8,
+    position: 'relative',
   },
   projectThumb: {
     width: '100%',
@@ -860,6 +873,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#d8d8d8',
     borderWidth: 1,
     borderColor: '#cab7b7',
+  },
+  completedSticker: {
+    position: 'absolute',
+    right: 6,
+    bottom: 40,
+    width: 42,
+    height: 42,
+  },
+  emptyProjectsCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#c8b3b3',
+    borderRadius: 12,
+    backgroundColor: '#f8eded',
+    padding: 12,
+    marginBottom: 8,
+  },
+  emptyProjectsTitle: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 24,
+    color: '#5f474b',
+  },
+  emptyProjectsBody: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 17,
+    color: '#7a6368',
   },
   projectLabel: {
     marginTop: 4,
@@ -1316,6 +1355,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  completeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  completeToggleText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 20,
+    color: '#6a5357',
   },
   composerCancel: {
     borderWidth: 1,
