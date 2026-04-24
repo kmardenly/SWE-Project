@@ -840,6 +840,12 @@ export default function ProjectsScreen() {
           })}
         </View>
 
+        {activeTab === 'projects' && !openProjectId && !openFolderId ? (
+          <Text style={styles.projectsListHint}>
+            Tap a project to open it. Press and hold a project to edit it, or press and hold empty space to create a new project.
+          </Text>
+        ) : null}
+
         {renderTabBody()}
       </ScrollView>
 
@@ -1047,6 +1053,14 @@ const styles = StyleSheet.create({
   },
   tabButtonTextActive: {
     color: '#5c3d3d',
+  },
+  projectsListHint: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 16,
+    lineHeight: 21,
+    color: '#7a6368',
+    marginBottom: 12,
+    textAlign: 'center',
   },
   gridWrap: {
     flexDirection: 'row',
