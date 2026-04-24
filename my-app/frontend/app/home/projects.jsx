@@ -1,9 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Keyboard, Modal, PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View, Text } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Image, Keyboard, Modal, PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { useUser } from '@/context/UserContext';
+import { supabase } from '@/lib/supabaseClient';
+import {
+  loadScrapbookWorkspace,
+  insertScrapbookProject,
+  updateScrapbookProject,
+  replaceCanvasElements,
+  insertInspiration,
+  deleteInspiration as removeInspirationFromDb,
+  insertListItem,
+  updateListItem,
+  deleteListItem,
+  isUuid,
+} from '@/FE-services/scrapbook.service';
 
 const TABS = ['projects', 'inspirations', 'lists'];
 
@@ -280,50 +294,154 @@ export default function ProjectsScreen() {
   const [draftProjectCover, setDraftProjectCover] = useState('');
   const [draftProjectCompleted, setDraftProjectCompleted] = useState(false);
   const [isDraggingElement, setIsDraggingElement] = useState(false);
-  const [projects, setProjects] = useState(() => [
-    {
-      id: EXAMPLE_PROJECT_ID,
-      name: 'bunny crochet',
-      completed: true,
-      lastEditedAt: Date.now(),
-      cover: EXAMPLE_BUNNY_URI,
-      folders: [],
-    },
-  ]);
-  const [projectElements, setProjectElements] = useState(() => ({
-    [EXAMPLE_PROJECT_ID]: [
-      {
-        id: 'photo-example-bunny',
-        type: 'photo',
-        content: EXAMPLE_BUNNY_URI,
-        x: 24,
-        y: 92,
-        width: 165,
-        height: 120,
-      },
-      {
-        id: 'text-example-bunny-note',
-        type: 'text',
-        content: '3/27 made this project as birthday present!',
-        x: 24,
-        y: 230,
-        width: 250,
-        height: 56,
-      },
-    ],
-  }));
-  const [inspirationImages, setInspirationImages] = useState(() => [{ id: 'inspo-example-bunny', uri: EXAMPLE_BUNNY_URI }]);
-  const [listItems, setListItems] = useState(() => [
-    {
-      id: 'list-item-example-yarn',
-      text: '3 balls of white yarn',
-      checked: false,
-      bulleted: true,
-    },
-  ]);
+  const { user, authReady } = useUser();
+  const canSync = Boolean(user?.id && supabase);
+  const [workspaceError, setWorkspaceError] = useState(null);
+  const lastLoadRef = useRef(0);
+  const listTextDebounce = useRef(new Map());
+  const lastSyncedCanvasJson = useRef('');
+  const [projects, setProjects] = useState(() => []);
+  const [projectElements, setProjectElements] = useState(() => ({}));
+  const [inspirationImages, setInspirationImages] = useState(() => []);
+  const [listItems, setListItems] = useState(() => []);
   const [listDraftText, setListDraftText] = useState('');
   const [listDraftBulleted, setListDraftBulleted] = useState(true);
   const canvasTapGuard = useRef(false);
+  const projectElementsRef = useRef({});
+
+  useEffect(() => {
+    projectElementsRef.current = projectElements;
+  }, [projectElements]);
+
+  const flushCanvas = useCallback(
+    async (projectId) => {
+      if (!canSync || !projectId || !isUuid(projectId)) return;
+      const elements = projectElementsRef.current[projectId] || [];
+      try {
+        const saved = await replaceCanvasElements(projectId, elements);
+        lastSyncedCanvasJson.current = JSON.stringify(saved);
+        setProjectElements((prev) => ({ ...prev, [projectId]: saved }));
+      } catch (e) {
+        console.error('Scrapbook canvas save failed', e);
+      }
+    },
+    [canSync]
+  );
+
+  const scheduleFlushCanvas = useCallback(
+    (projectId) => {
+      if (!projectId) return;
+      setTimeout(() => {
+        void flushCanvas(projectId);
+      }, 120);
+    },
+    [flushCanvas]
+  );
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    if (!user?.id) {
+      setWorkspaceError(null);
+      setProjects([
+        {
+          id: EXAMPLE_PROJECT_ID,
+          name: 'bunny crochet',
+          completed: true,
+          lastEditedAt: Date.now(),
+          cover: EXAMPLE_BUNNY_URI,
+          folders: [],
+        },
+      ]);
+      setProjectElements({
+        [EXAMPLE_PROJECT_ID]: [
+          { id: 'photo-example-bunny', type: 'photo', content: EXAMPLE_BUNNY_URI, x: 24, y: 92, width: 165, height: 120 },
+          {
+            id: 'text-example-bunny-note',
+            type: 'text',
+            content: '3/27 made this project as birthday present!',
+            x: 24,
+            y: 230,
+            width: 250,
+            height: 56,
+          },
+        ],
+      });
+      setInspirationImages([{ id: 'inspo-example-bunny', uri: EXAMPLE_BUNNY_URI }]);
+      setListItems([{ id: 'list-item-example-yarn', text: '3 balls of white yarn', checked: false, bulleted: true }]);
+      lastLoadRef.current = Date.now();
+      return;
+    }
+
+    if (!supabase) {
+      setWorkspaceError('Add EXPO_PUBLIC_SUPABASE_URL and ANON key to save.');
+      return;
+    }
+
+    let cancel = false;
+    loadScrapbookWorkspace(user.id, DEFAULT_PROJECT_COVER_URI)
+      .then((data) => {
+        if (cancel) return;
+        lastLoadRef.current = Date.now();
+        setWorkspaceError(null);
+        setProjects(data.projects);
+        setProjectElements(data.projectElements);
+        setInspirationImages(data.inspirationImages);
+        setListItems(data.listItems);
+      })
+      .catch((e) => {
+        if (cancel) return;
+        console.error(e);
+        setWorkspaceError(
+          'Sign-in data did not load. In Supabase: run the migration for scrapbook_* tables (or push the latest migration from my-app/backend).'
+        );
+        setProjects([]);
+        setProjectElements({});
+        setInspirationImages([]);
+        setListItems([]);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [authReady, user?.id]);
+
+  useEffect(() => {
+    if (openProjectId) {
+      lastSyncedCanvasJson.current = JSON.stringify(projectElementsRef.current[openProjectId] || []);
+    } else {
+      lastSyncedCanvasJson.current = '';
+    }
+  }, [openProjectId]);
+
+  const lastOpenProjectRef = useRef(null);
+  useEffect(() => {
+    if (lastOpenProjectRef.current && lastOpenProjectRef.current !== openProjectId) {
+      const prevId = lastOpenProjectRef.current;
+      void flushCanvas(prevId);
+    }
+    lastOpenProjectRef.current = openProjectId;
+  }, [openProjectId, flushCanvas]);
+
+  const prevIsEditing = useRef(false);
+  useEffect(() => {
+    if (prevIsEditing.current && !isEditingPage && openProjectId) {
+      void flushCanvas(openProjectId);
+    }
+    prevIsEditing.current = isEditingPage;
+  }, [isEditingPage, openProjectId, flushCanvas]);
+
+  useEffect(() => {
+    if (!openProjectId || !isUuid(openProjectId) || !canSync) return;
+    if (Date.now() - lastLoadRef.current < 2000) return;
+    const elements = projectElements[openProjectId] || [];
+    const snap = JSON.stringify(elements);
+    if (snap === lastSyncedCanvasJson.current) return;
+    const t = setTimeout(() => {
+      void flushCanvas(openProjectId);
+    }, 1400);
+    return () => clearTimeout(t);
+  }, [projectElements, openProjectId, canSync, flushCanvas]);
 
   const openProject = useMemo(() => projects.find((project) => project.id === openProjectId) || null, [projects, openProjectId]);
   const openFolder = useMemo(
@@ -398,31 +516,84 @@ export default function ProjectsScreen() {
 
     if (!result.canceled && result.assets?.length) {
       const nextAsset = result.assets[0];
-      setInspirationImages((prev) => [{ id: `inspo-${Date.now()}`, uri: nextAsset.uri }, ...prev]);
+      if (canSync) {
+        try {
+          const row = await insertInspiration(user.id, nextAsset.uri, -Date.now());
+          setInspirationImages((prev) => [row, ...prev]);
+        } catch (e) {
+          console.error(e);
+          Alert.alert('Could not save image', 'Run the scrapbook migration, then try again.');
+        }
+      } else {
+        setInspirationImages((prev) => [{ id: `inspo-${Date.now()}`, uri: nextAsset.uri }, ...prev]);
+      }
     }
   };
 
-  const addListItem = () => {
+  const addListItem = async () => {
     const trimmed = listDraftText.trim();
     if (!trimmed) return;
-    setListItems((prev) => [
-      ...prev,
-      {
-        id: `list-item-${Date.now()}`,
-        text: trimmed,
-        checked: false,
-        bulleted: listDraftBulleted,
-      },
-    ]);
+    if (canSync) {
+      try {
+        const row = await insertListItem(
+          user.id,
+          { text: trimmed, bulleted: listDraftBulleted },
+          listItems.length
+        );
+        setListItems((prev) => [...prev, row]);
+      } catch (e) {
+        console.error(e);
+        Alert.alert('Could not add list item', 'Check migration and try again.');
+      }
+    } else {
+      setListItems((prev) => [
+        ...prev,
+        {
+          id: `list-item-${Date.now()}`,
+          text: trimmed,
+          checked: false,
+          bulleted: listDraftBulleted,
+        },
+      ]);
+    }
     setListDraftText('');
   };
 
-  const saveProject = () => {
+  const onListTextChange = (id, nextText) => {
+    setListItems((prev) => prev.map((e) => (e.id === id ? { ...e, text: nextText } : e)));
+    if (!canSync || !isUuid(id)) return;
+    const ex = listTextDebounce.current.get(id);
+    if (ex) clearTimeout(ex);
+    const t = setTimeout(() => {
+      listTextDebounce.current.delete(id);
+      void updateListItem(id, { text: nextText }).catch((e) => console.error(e));
+    }, 500);
+    listTextDebounce.current.set(id, t);
+  };
+
+  const saveProject = async () => {
     const trimmedName = draftProjectName.trim() || 'Untitled project';
     const now = Date.now();
     const fallbackCover = DEFAULT_PROJECT_COVER_URI;
 
     if (editingProjectId) {
+      if (canSync && isUuid(editingProjectId)) {
+        try {
+          const existing = projects.find((p) => p.id === editingProjectId);
+          const coverForUi = draftProjectCover || existing?.cover || fallbackCover;
+          await updateScrapbookProject(editingProjectId, {
+            name: trimmedName,
+            completed: draftProjectCompleted,
+            cover: coverForUi,
+            lastEditedAtMs: now,
+            defaultProjectCoverUri: fallbackCover,
+          });
+        } catch (e) {
+          console.error(e);
+          Alert.alert('Could not save project', 'Check you ran the scrapbook migration and are online.');
+          return;
+        }
+      }
       setProjects((prev) =>
         prev.map((project) =>
           project.id === editingProjectId
@@ -440,19 +611,38 @@ export default function ProjectsScreen() {
       return;
     }
 
-    const id = `project-${Date.now()}`;
-    setProjects((prev) => [
-      ...prev,
-      {
-        id,
-        name: trimmedName,
-        completed: draftProjectCompleted,
-        lastEditedAt: now,
-        cover: draftProjectCover || fallbackCover,
-        folders: [],
-      },
-    ]);
-    setProjectElements((prev) => ({ ...prev, [id]: [] }));
+    if (canSync) {
+      try {
+        const coverForDb =
+          !draftProjectCover || draftProjectCover === fallbackCover ? null : draftProjectCover;
+        const created = await insertScrapbookProject(user.id, {
+          name: trimmedName,
+          completed: draftProjectCompleted,
+          cover_url: coverForDb,
+          defaultProjectCoverUri: fallbackCover,
+        });
+        setProjects((prev) => [...prev, { ...created, lastEditedAt: now }]);
+        setProjectElements((prev) => ({ ...prev, [created.id]: [] }));
+      } catch (e) {
+        console.error(e);
+        Alert.alert('Could not create project', 'Run the scrapbook migration on Supabase, then try again.');
+        return;
+      }
+    } else {
+      const id = `project-${Date.now()}`;
+      setProjects((prev) => [
+        ...prev,
+        {
+          id,
+          name: trimmedName,
+          completed: draftProjectCompleted,
+          lastEditedAt: now,
+          cover: draftProjectCover || fallbackCover,
+          folders: [],
+        },
+      ]);
+      setProjectElements((prev) => ({ ...prev, [id]: [] }));
+    }
     setProjectEditorVisible(false);
   };
 
@@ -489,6 +679,9 @@ export default function ProjectsScreen() {
             : draftPhotoUri.trim() || selectedElement.content,
       });
       setComposerVisible(false);
+      if (canSync && isUuid(openProjectId)) {
+        scheduleFlushCanvas(openProjectId);
+      }
       return;
     }
 
@@ -511,6 +704,16 @@ export default function ProjectsScreen() {
       [openProjectId]: [...(prev[openProjectId] || []), nextElement],
     }));
     setComposerVisible(false);
+    if (canSync && isUuid(openProjectId)) {
+      scheduleFlushCanvas(openProjectId);
+    }
+  };
+
+  const onRemoveInspiration = (itemId) => {
+    if (canSync && isUuid(itemId)) {
+      void removeInspirationFromDb(itemId).catch((e) => console.error(e));
+    }
+    setInspirationImages((prev) => prev.filter((img) => img.id !== itemId));
   };
 
   const renderProjectsRoot = () => (
@@ -701,7 +904,7 @@ export default function ProjectsScreen() {
                   <Image source={{ uri: item.uri }} style={styles.inspirationImage} resizeMode="cover" />
                   <Pressable
                     style={styles.inspirationDeleteButton}
-                    onPress={() => setInspirationImages((prev) => prev.filter((img) => img.id !== item.id))}
+                    onPress={() => onRemoveInspiration(item.id)}
                   >
                     <Ionicons name="trash-outline" size={14} color="#fff" />
                   </Pressable>
@@ -714,7 +917,7 @@ export default function ProjectsScreen() {
                   <Image source={{ uri: item.uri }} style={styles.inspirationImage} resizeMode="cover" />
                   <Pressable
                     style={styles.inspirationDeleteButton}
-                    onPress={() => setInspirationImages((prev) => prev.filter((img) => img.id !== item.id))}
+                    onPress={() => onRemoveInspiration(item.id)}
                   >
                     <Ionicons name="trash-outline" size={14} color="#fff" />
                   </Pressable>
@@ -761,11 +964,15 @@ export default function ProjectsScreen() {
             <View key={item.id} style={styles.listItemRow}>
               <Pressable
                 style={styles.listCheckButton}
-                onPress={() =>
+                onPress={() => {
+                  const next = !item.checked;
                   setListItems((prev) =>
-                    prev.map((entry) => (entry.id === item.id ? { ...entry, checked: !entry.checked } : entry))
-                  )
-                }
+                    prev.map((entry) => (entry.id === item.id ? { ...entry, checked: next } : entry))
+                  );
+                  if (canSync && isUuid(item.id)) {
+                    void updateListItem(item.id, { checked: next }).catch((e) => console.error(e));
+                  }
+                }}
               >
                 <Ionicons name={item.checked ? 'checkbox' : 'square-outline'} size={20} color="#6c5155" />
               </Pressable>
@@ -773,17 +980,18 @@ export default function ProjectsScreen() {
               <TextInput
                 style={[styles.listItemInput, item.checked && styles.listItemInputChecked]}
                 value={item.text}
-                onChangeText={(nextText) =>
-                  setListItems((prev) =>
-                    prev.map((entry) => (entry.id === item.id ? { ...entry, text: nextText } : entry))
-                  )
-                }
+                onChangeText={(nextText) => onListTextChange(item.id, nextText)}
                 placeholder="List item"
                 placeholderTextColor="#9e8888"
               />
               <Pressable
                 style={styles.listDeleteButton}
-                onPress={() => setListItems((prev) => prev.filter((entry) => entry.id !== item.id))}
+                onPress={() => {
+                  if (canSync && isUuid(item.id)) {
+                    void deleteListItem(item.id).catch((e) => console.error(e));
+                  }
+                  setListItems((prev) => prev.filter((entry) => entry.id !== item.id));
+                }}
               >
                 <Ionicons name="trash-outline" size={17} color="#a6525d" />
               </Pressable>
@@ -814,6 +1022,11 @@ export default function ProjectsScreen() {
           </Pressable>
           <Text style={styles.title}>Projects</Text>
         </View>
+        {workspaceError ? (
+          <Text style={styles.workspaceErrorText} numberOfLines={4}>
+            {workspaceError}
+          </Text>
+        ) : null}
 
         <View style={styles.tabsRow}>
           {TABS.map((tab) => {
@@ -866,6 +1079,9 @@ export default function ProjectsScreen() {
                   [openProjectId]: (prev[openProjectId] || []).filter((el) => el.id !== selectedElement.id),
                 }));
                 setElementMenuVisible(false);
+                if (canSync && isUuid(openProjectId)) {
+                  scheduleFlushCanvas(openProjectId);
+                }
               }}
             >
               <Text style={styles.menuActionDelete}>Delete</Text>
@@ -1020,6 +1236,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: 36,
     color: '#5c3d3d',
+  },
+  workspaceErrorText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 14,
+    color: '#a54a5a',
+    marginBottom: 8,
   },
   tabsRow: {
     flexDirection: 'row',
