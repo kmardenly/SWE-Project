@@ -9,6 +9,7 @@ my-app/Dockerfile
 my-app/README.Docker.md
 my-app/supabase/.branches/_current_branch
 my-app/supabase/.temp/cli-latest
+node_modules/
 
 # Supabase CLI: canonical project is my-app/backend/supabase (config.toml)
 # A root-level `supabase/` is local link/cache only — do not commit migrations here.

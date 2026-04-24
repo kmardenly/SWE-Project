@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -13,9 +15,20 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CatWindow from '@/components/cat-widget';
+import { useUser } from '@/context/UserContext';
+import {
+  createUserGoal,
+  deleteUserGoal,
+  fetchUserGoals,
+  formatSupabaseError,
+  updateUserGoal,
+  updateUserLevel,
+} from '@/FE-services/goals.service';
+import { supabase } from '@/lib/supabaseClient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_WIDTH = 390;
@@ -26,6 +39,7 @@ const DARK = '#5c3d3d';
 const MAX_SLIDER_DAYS = 120;
 const MAX_EXTRA_DAYS = 2000;
 const CAT_MOODS = ['happy', 'default', 'sad', 'playful'];
+const LEVEL_MILESTONES = [1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 60, 70, 80, 90, 100];
 
 function addDaysToToday(days) {
   const d = new Date();
@@ -147,8 +161,11 @@ function GoalCard({ goal, onDelete, onArchive, onToggleComplete, onToggleSubGoal
 
 export default function GoalsScreen() {
   const insets = useSafeAreaInsets();
+  const { user, authReady } = useUser();
   const scrollRef = useRef(null);
-  const [goals, setGoals] = useState(INITIAL_GOALS);
+  const loadGoalsGenRef = useRef(0);
+  const [goals, setGoals] = useState([]);
+  const [goalsHydrated, setGoalsHydrated] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [goalName, setGoalName] = useState('');
@@ -164,7 +181,7 @@ export default function GoalsScreen() {
 
   const effectiveDays = getEffectiveDeadlineDays(deadlineSlider, extraBeyond120);
 
-  const handleAddGoal = () => {
+  const handleAddGoal = async () => {
     const trimmedName = goalName.trim();
     if (!trimmedName) return;
 
@@ -177,19 +194,28 @@ export default function GoalsScreen() {
     const deadlineLabel =
       effectiveDays <= 0 ? 'no deadline' : addDaysToToday(effectiveDays);
 
-    setGoals((prev) => [
-      ...prev,
-      {
-        id: `g-${Date.now()}`,
-        title: trimmedName,
-        deadline: deadlineLabel,
-        subGoals,
-        completed: false,
-        completedAt: null,
-        archived: false,
-        archivedAt: null,
-      },
-    ]);
+    const goalPayload = {
+      title: trimmedName,
+      deadline: deadlineLabel,
+      subGoals,
+      completed: false,
+      completedAt: null,
+      archived: false,
+      archivedAt: null,
+    };
+
+    try {
+      if (user?.id) {
+        const createdGoal = await createUserGoal(user.id, goalPayload);
+        setGoals((prev) => [...prev, createdGoal]);
+      } else {
+        setGoals((prev) => [...prev, { ...goalPayload, id: `g-${Date.now()}` }]);
+      }
+    } catch (error) {
+      console.error('Failed to create goal:', error);
+      Alert.alert('Could not save goal', formatSupabaseError(error));
+      return;
+    }
 
     setGoalName('');
     setDeadlineSlider(0);
@@ -198,72 +224,102 @@ export default function GoalsScreen() {
     setIsAddOpen(false);
   };
 
-  const handleDeleteGoal = (goalId) => {
+  const handleDeleteGoal = async (goalId) => {
+    if (user?.id) {
+      try {
+        await deleteUserGoal(user.id, goalId);
+      } catch (error) {
+        console.error('Failed to delete goal:', error);
+        Alert.alert('Could not delete goal', formatSupabaseError(error));
+        return;
+      }
+    }
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
   };
 
-  const handleArchiveGoal = (goalId) => {
+  const handleArchiveGoal = async (goalId) => {
     const today = new Date().toISOString().slice(0, 10);
-    setGoals((prev) =>
-      prev.map((goal) => {
-        if (goal.id !== goalId) return goal;
-        return {
-          ...goal,
-          completed: true,
-          completedAt: goal.completedAt || today,
-          archived: true,
-          archivedAt: today,
-        };
-      })
-    );
+    const currentGoal = goals.find((goal) => goal.id === goalId);
+    if (!currentGoal) return;
+    const patch = {
+      completed: true,
+      completedAt: currentGoal.completedAt || today,
+      archived: true,
+      archivedAt: today,
+    };
+    try {
+      if (user?.id) {
+        const updated = await updateUserGoal(user.id, goalId, patch);
+        setGoals((prev) => prev.map((goal) => (goal.id === goalId ? updated : goal)));
+        return;
+      }
+      setGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, ...patch } : goal)));
+    } catch (error) {
+      console.error('Failed to archive goal:', error);
+      Alert.alert('Could not archive goal', formatSupabaseError(error));
+    }
   };
 
-  const handleUnarchiveGoal = (goalId) => {
-    setGoals((prev) =>
-      prev.map((goal) => {
-        if (goal.id !== goalId) return goal;
-        return {
-          ...goal,
-          archived: false,
-          archivedAt: null,
-        };
-      })
-    );
+  const handleUnarchiveGoal = async (goalId) => {
+    const patch = { archived: false, archivedAt: null };
+    try {
+      if (user?.id) {
+        const updated = await updateUserGoal(user.id, goalId, patch);
+        setGoals((prev) => prev.map((goal) => (goal.id === goalId ? updated : goal)));
+        return;
+      }
+      setGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, ...patch } : goal)));
+    } catch (error) {
+      console.error('Failed to unarchive goal:', error);
+      Alert.alert('Could not unarchive goal', formatSupabaseError(error));
+    }
   };
 
-  const handleToggleComplete = (goalId) => {
+  const handleToggleComplete = async (goalId) => {
     const today = new Date().toISOString().slice(0, 10);
-    setGoals((prev) =>
-      prev.map((goal) => {
-        if (goal.id !== goalId) return goal;
-        const nextCompleted = !goal.completed;
-        return {
-          ...goal,
-          completed: nextCompleted,
-          completedAt: nextCompleted ? today : null,
-        };
-      })
-    );
+    const currentGoal = goals.find((goal) => goal.id === goalId);
+    if (!currentGoal) return;
+    const nextCompleted = !currentGoal.completed;
+    const patch = {
+      completed: nextCompleted,
+      completedAt: nextCompleted ? today : null,
+    };
+    try {
+      if (user?.id) {
+        const updated = await updateUserGoal(user.id, goalId, patch);
+        setGoals((prev) => prev.map((goal) => (goal.id === goalId ? updated : goal)));
+        return;
+      }
+      setGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, ...patch } : goal)));
+    } catch (error) {
+      console.error('Failed to update goal completion:', error);
+      Alert.alert('Could not update goal', formatSupabaseError(error));
+    }
   };
 
-  const handleToggleSubGoal = (goalId, subIndex) => {
-    setGoals((prev) =>
-      prev.map((goal) => {
-        if (goal.id !== goalId) return goal;
-        const subs = (goal.subGoals ?? []).map(normalizeSubGoal);
-        if (!subs[subIndex]) return goal;
-        const next = subs.map((s, i) =>
-          i === subIndex ? { ...s, completed: !s.completed } : s
-        );
-        const allDone = next.length > 0 && next.every((sub) => sub.completed);
-        return {
-          ...goal,
-          subGoals: next,
-          completed: allDone,
-          completedAt: allDone ? goal.completedAt || new Date().toISOString().slice(0, 10) : null,
-        };
-      })
-    );
+  const handleToggleSubGoal = async (goalId, subIndex) => {
+    const currentGoal = goals.find((goal) => goal.id === goalId);
+    if (!currentGoal) return;
+    const subs = (currentGoal.subGoals ?? []).map(normalizeSubGoal);
+    if (!subs[subIndex]) return;
+    const nextSubGoals = subs.map((s, i) => (i === subIndex ? { ...s, completed: !s.completed } : s));
+    const allDone = nextSubGoals.length > 0 && nextSubGoals.every((sub) => sub.completed);
+    const patch = {
+      subGoals: nextSubGoals,
+      completed: allDone,
+      completedAt: allDone ? currentGoal.completedAt || new Date().toISOString().slice(0, 10) : null,
+    };
+    try {
+      if (user?.id) {
+        const updated = await updateUserGoal(user.id, goalId, patch);
+        setGoals((prev) => prev.map((goal) => (goal.id === goalId ? updated : goal)));
+        return;
+      }
+      setGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, ...patch } : goal)));
+    } catch (error) {
+      console.error('Failed to update sub-goal:', error);
+      Alert.alert('Could not update sub-goal', formatSupabaseError(error));
+    }
   };
 
   const setTotalDaysFromInput = (text) => {
@@ -293,6 +349,19 @@ export default function GoalsScreen() {
   const activeGoals = goals.filter((g) => !g.archived);
   const archivedGoals = goals.filter((g) => g.archived);
   const catMood = CAT_MOODS[catMoodIndex] || 'happy';
+  const levelIndex = LEVEL_MILESTONES.reduce(
+    (acc, milestone, index) => (completedCount >= milestone ? index : acc),
+    0
+  );
+  const currentLevel = LEVEL_MILESTONES[levelIndex];
+  const hasNextLevel = levelIndex < LEVEL_MILESTONES.length - 1;
+  const nextLevel = hasNextLevel ? LEVEL_MILESTONES[levelIndex + 1] : currentLevel;
+  const currentLevelBase = levelIndex === 0 ? 0 : LEVEL_MILESTONES[levelIndex];
+  const goalsInCurrentBand = Math.max(0, completedCount - currentLevelBase);
+  const goalsNeededForNextLevel = Math.max(1, nextLevel - currentLevelBase);
+  const levelProgress = hasNextLevel
+    ? Math.min(1, goalsInCurrentBand / goalsNeededForNextLevel)
+    : 1;
   const lastCompletedDate = goals
     .filter((g) => g.completed && g.completedAt)
     .reduce((latest, g) => (!latest || g.completedAt > latest ? g.completedAt : latest), null);
@@ -302,6 +371,58 @@ export default function GoalsScreen() {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
   };
+
+  const loadUserGoals = useCallback(async () => {
+    if (!authReady) return;
+    if (!user?.id) {
+      setGoals(INITIAL_GOALS);
+      setGoalsHydrated(true);
+      return;
+    }
+    if (!supabase) {
+      setGoals([]);
+      setGoalsHydrated(true);
+      return;
+    }
+    const gen = ++loadGoalsGenRef.current;
+    setGoalsHydrated(false);
+    try {
+      const storedGoals = await fetchUserGoals(user.id);
+      if (gen !== loadGoalsGenRef.current) return;
+      setGoals(storedGoals);
+    } catch (error) {
+      console.error('Failed to load goals:', error);
+      const msg = formatSupabaseError(error);
+      const hint =
+        /does not exist|schema cache|Could not find the table/i.test(msg) ||
+        String(error?.code || '') === '42P01'
+          ? 'Apply the latest Supabase migrations (user_goals), then reopen this screen.'
+          : msg;
+      if (gen === loadGoalsGenRef.current) {
+        Alert.alert('Could not load saved goals', hint || 'Unknown error');
+        setGoals([]);
+      }
+    } finally {
+      if (gen === loadGoalsGenRef.current) {
+        setGoalsHydrated(true);
+      }
+    }
+  }, [authReady, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserGoals();
+    }, [loadUserGoals])
+  );
+
+  useEffect(() => {
+    if (!user?.id || !goalsHydrated) return;
+    updateUserLevel(user.id, currentLevel).catch((error) => {
+      console.error('Failed to sync level:', error);
+    });
+  }, [currentLevel, goalsHydrated, user?.id]);
+
+  const showGoalsLoading = authReady && Boolean(user?.id) && !goalsHydrated;
 
   return (
     <View style={styles.root}>
@@ -323,6 +444,12 @@ export default function GoalsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
+          {showGoalsLoading ? (
+            <View style={styles.goalsLoadingWrap}>
+              <ActivityIndicator size="large" color={DARK} />
+              <Text style={styles.goalsLoadingText}>loading your goals…</Text>
+            </View>
+          ) : null}
           <View style={styles.profileCard}>
             <View style={styles.catWindowColumn}>
               <CatWindow mood={catMood} />
@@ -351,7 +478,7 @@ export default function GoalsScreen() {
                   <Text style={styles.profileText}>{`name: ${catName}`}</Text>
                 </Pressable>
               )}
-              <Text style={styles.profileText}>level: 1</Text>
+              <Text style={styles.profileText}>level: {currentLevel}</Text>
               <Text style={styles.profileText}>goals achieved: {completedCount}</Text>
               <Text style={styles.profileText}>
                 last goal completed: {lastCompletedDate ? formatDateDot(lastCompletedDate) : '--'}
@@ -362,6 +489,22 @@ export default function GoalsScreen() {
                 <Ionicons name="swap-horizontal" size={14} color="#7f6969" />
               </Pressable>
             </View>
+          </View>
+          <View style={styles.levelProgressCard}>
+            <View style={styles.levelProgressHeader}>
+              <Text style={styles.levelProgressLabel}>level progress</Text>
+              <Text style={styles.levelProgressMeta}>
+                {hasNextLevel ? `${completedCount}/${nextLevel} goals` : 'max level reached'}
+              </Text>
+            </View>
+            <View style={styles.levelBarTrack}>
+              <View style={[styles.levelBarFill, { width: `${levelProgress * 100}%` }]} />
+            </View>
+            <Text style={styles.levelProgressHint}>
+              {hasNextLevel
+                ? `${Math.max(0, nextLevel - completedCount)} more to level ${nextLevel}`
+                : 'you reached the top milestone'}
+            </Text>
           </View>
 
           {activeGoals.map((goal) => (
@@ -562,6 +705,17 @@ const styles = StyleSheet.create({
     paddingBottom: responsive(150, 130, 180),
     gap: 10,
   },
+  goalsLoadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  goalsLoadingText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(18, 14, 22),
+    color: '#7a6666',
+  },
   profileCard: {
     borderRadius: 10,
     borderWidth: 1,
@@ -570,6 +724,50 @@ const styles = StyleSheet.create({
     padding: 8,
     flexDirection: 'row',
     gap: 8,
+  },
+  levelProgressCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#c6b3b3',
+    backgroundColor: '#f6ecec',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  levelProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  levelProgressLabel: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 24),
+    color: DARK,
+  },
+  levelProgressMeta: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 12, 18),
+    color: '#7a6666',
+  },
+  levelBarTrack: {
+    width: '100%',
+    height: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#cebaba',
+    backgroundColor: '#efe1e1',
+    overflow: 'hidden',
+  },
+  levelBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#88ad79',
+  },
+  levelProgressHint: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 12, 18),
+    color: '#7a6666',
   },
   catWindowColumn: {
     alignItems: 'center',
