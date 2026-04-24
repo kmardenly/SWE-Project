@@ -25,6 +25,7 @@ import FloatingPostButton from '@/components/floating-post-button';
 import SearchSuggestions from '@/components/search.suggestions';
 import SearchTagChips from '@/components/search.tag.chips';
 import { fetchExploreItems } from '@/constants/exploreItems';
+import { getFollowingList } from '@/FE-services/follows.service';
 import {
   buildTagParam,
   useSharedSearchBar,
@@ -105,18 +106,45 @@ export default function HomeScreen() {
   }, [user?.id]);
 
   const loadPosts = useCallback(async () => {
+    if (!user?.id) {
+      setPosts([]);
+      setPostsLoading(false);
+      return;
+    }
+
     setPostsLoading(true);
     setPostsError('');
 
     try {
-      const rows = await fetchExploreItems();
-      setPosts(rows);
+      const [rows, following] = await Promise.all([
+        fetchExploreItems(),
+        getFollowingList(user.id),
+      ]);
+
+      const followedUserIds = new Set(
+          (following || [])
+              .map((item) => item?.user_id)
+              .filter(Boolean)
+      );
+
+      const feedRows = (rows || [])
+          .filter((post) => {
+            const creatorId = post?.creatorId;
+            return creatorId && followedUserIds.has(creatorId);
+          })
+          .sort((a, b) => {
+            const aTime = new Date(a?.createdAt || 0).getTime();
+            const bTime = new Date(b?.createdAt || 0).getTime();
+            return bTime - aTime;
+          });
+
+      setPosts(feedRows);
     } catch (error) {
       setPostsError(error?.message || 'Unable to load posts.');
     } finally {
       setPostsLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(
       useCallback(() => {
