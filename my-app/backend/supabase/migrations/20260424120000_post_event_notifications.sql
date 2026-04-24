@@ -141,42 +141,78 @@ create trigger trg_notify_post_like
   for each row
   execute function public.tg_notify_post_like();
 
-create or replace function public.tg_notify_post_save()
+create or replace function public.tg_notify_post_like()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_creator uuid;
+v_creator uuid;
   v_content text;
   v_title text;
-  v_saver text;
+  v_actor text;
+  v_like_count integer;
 begin
-  select p.creator_id, p.content
-  into v_creator, v_content
-  from public.posts p
-  where p.post_id = new.post_id
-    and p.deleted_at is null;
+select p.creator_id, p.content
+into v_creator, v_content
+from public.posts p
+where p.post_id = new.post_id
+  and p.deleted_at is null;
 
-  if v_creator is null or v_creator = new.user_id then
+-- Do not notify if post is missing/deleted or user liked their own post
+if v_creator is null or v_creator = new.user_id then
     return new;
-  end if;
+end if;
 
-  v_title := public.post_title_from_content(v_content);
-  v_saver := public.user_display_name(new.user_id);
+select count(*)
+into v_like_count
+from public.post_likes pl
+where pl.post_id = new.post_id;
 
-  insert into public.notifications (user_id, actor_id, type, target_type, target_id, message_content)
-  values (
-    v_creator,
-    new.user_id,
-    'save',
-    'post',
-    new.post_id,
-    format('%s saved your post "%s".', v_saver, v_title)
-  );
+v_title := public.post_title_from_content(v_content);
+  v_actor := public.user_display_name(new.user_id);
 
-  return new;
+  -- First 5 likes: notify every like individually
+  if v_like_count <= 5 then
+    insert into public.notifications (
+      user_id,
+      actor_id,
+      type,
+      target_type,
+      target_id,
+      message_content
+    )
+    values (
+      v_creator,
+      new.user_id,
+      'like',
+      'post',
+      new.post_id,
+      format('%s liked your post "%s".', v_actor, v_title)
+    );
+
+  -- After 5: only notify on every multiple of 5
+  elsif v_like_count % 5 = 0 then
+    insert into public.notifications (
+      user_id,
+      actor_id,
+      type,
+      target_type,
+      target_id,
+      message_content
+    )
+    values (
+      v_creator,
+      null,
+      'like_group',
+      'post',
+      new.post_id,
+      format('You have %s new likes on your post "%s"!', v_like_count, v_title)
+    );
+end if;
+
+return new;
 end;
 $$;
 
