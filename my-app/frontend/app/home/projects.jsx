@@ -286,27 +286,21 @@ function DraggableElement({
         {element.type === 'photo' ? (
           <Image source={{ uri: element.content }} style={styles.canvasPhoto} />
         ) : (
-          <Text
-            style={styles.canvasText}
-            onTextLayout={(event) => {
-              const lineCount = event?.nativeEvent?.lines?.length || 1;
-              const lineWidths = (event?.nativeEvent?.lines || []).map((line) => line.width || 0);
-              const maxLineWidth = lineWidths.length ? Math.max(...lineWidths) : 0;
-              const targetHeight = Math.max(minTextHeight, lineCount * styles.canvasText.lineHeight + 8);
-              let targetWidth = Math.max(minTextWidth, Math.ceil(maxLineWidth) + 14);
-
-              if (lineCount > 1 && element.width < 340) {
-                targetWidth = Math.max(targetWidth, element.width + 18);
-              }
-
-              onAutoSize(element.id, {
-                width: Math.min(360, targetWidth),
-                height: targetHeight,
-              });
-            }}
-          >
-            {element.content}
-          </Text>
+          <>
+            <Text style={styles.canvasText}>{element.content}</Text>
+            <View style={styles.canvasTextMeasureWrap} pointerEvents="none">
+              <Text
+                style={styles.canvasTextMeasure}
+                onTextLayout={(event) => {
+                  const lineCount = event?.nativeEvent?.lines?.length || 1;
+                  const targetHeight = Math.max(minTextHeight, lineCount * styles.canvasText.lineHeight + 12);
+                  onAutoSize(element.id, { height: targetHeight });
+                }}
+              >
+                {element.content}
+              </Text>
+            </View>
+          </>
         )}
       </Pressable>
       {isEditing && element.type === 'text' && isSelected && textInteractionMode === 'resize' ? (
@@ -891,6 +885,25 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     width: '100%',
     flexWrap: 'wrap',
+    paddingHorizontal: 4,
+    paddingTop: 2,
+  },
+  canvasTextMeasureWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+    zIndex: -1,
+  },
+  canvasTextMeasure: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: 16,
+    lineHeight: 20,
+    width: '100%',
+    paddingHorizontal: 4,
+    paddingTop: 2,
+    color: 'transparent',
   },
   textResizeTouchArea: {
     position: 'absolute',
