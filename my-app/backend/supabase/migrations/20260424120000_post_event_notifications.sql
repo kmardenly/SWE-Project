@@ -107,6 +107,7 @@ declare
   v_content text;
   v_title text;
   v_actor text;
+  v_like_count integer;
 begin
   select p.creator_id, p.content
   into v_creator, v_content
@@ -118,59 +119,12 @@ begin
     return new;
   end if;
 
+  select count(*)
+  into v_like_count
+  from public.post_likes pl
+  where pl.post_id = new.post_id;
+
   v_title := public.post_title_from_content(v_content);
-  v_actor := public.user_display_name(new.user_id);
-
-  insert into public.notifications (user_id, actor_id, type, target_type, target_id, message_content)
-  values (
-    v_creator,
-    new.user_id,
-    'like',
-    'post',
-    new.post_id,
-    format('%s liked your post "%s".', v_actor, v_title)
-  );
-
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_notify_post_like on public.post_likes;
-create trigger trg_notify_post_like
-  after insert on public.post_likes
-  for each row
-  execute function public.tg_notify_post_like();
-
-create or replace function public.tg_notify_post_like()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-v_creator uuid;
-  v_content text;
-  v_title text;
-  v_actor text;
-  v_like_count integer;
-begin
-select p.creator_id, p.content
-into v_creator, v_content
-from public.posts p
-where p.post_id = new.post_id
-  and p.deleted_at is null;
-
--- Do not notify if post is missing/deleted or user liked their own post
-if v_creator is null or v_creator = new.user_id then
-    return new;
-end if;
-
-select count(*)
-into v_like_count
-from public.post_likes pl
-where pl.post_id = new.post_id;
-
-v_title := public.post_title_from_content(v_content);
   v_actor := public.user_display_name(new.user_id);
 
   -- First 5 likes: notify every like individually
@@ -210,9 +164,54 @@ v_title := public.post_title_from_content(v_content);
       new.post_id,
       format('You have %s new likes on your post "%s"!', v_like_count, v_title)
     );
-end if;
+  end if;
 
-return new;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_post_like on public.post_likes;
+create trigger trg_notify_post_like
+  after insert on public.post_likes
+  for each row
+  execute function public.tg_notify_post_like();
+
+create or replace function public.tg_notify_post_save()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_creator uuid;
+  v_content text;
+  v_title text;
+  v_actor text;
+begin
+  select p.creator_id, p.content
+  into v_creator, v_content
+  from public.posts p
+  where p.post_id = new.post_id
+    and p.deleted_at is null;
+
+  if v_creator is null or v_creator = new.user_id then
+    return new;
+  end if;
+
+  v_title := public.post_title_from_content(v_content);
+  v_actor := public.user_display_name(new.user_id);
+
+  insert into public.notifications (user_id, actor_id, type, target_type, target_id, message_content)
+  values (
+    v_creator,
+    new.user_id,
+    'save',
+    'post',
+    new.post_id,
+    format('%s saved your post "%s".', v_actor, v_title)
+  );
+
+  return new;
 end;
 $$;
 

@@ -209,7 +209,8 @@
     "email" text,
     "avatar_url" text,
     "display_name" character varying(50),
-    "level" integer default 1
+    "level" integer default 1,
+    "username" text 
       );
 
 
