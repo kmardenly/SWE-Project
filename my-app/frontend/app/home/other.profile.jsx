@@ -338,7 +338,7 @@ export default function OtherProfileScreen() {
 
                 <View style={styles.statsRow}>
                   <View style={styles.statCell}>
-                    <Text style={styles.statLabel}>Posts</Text>
+                    <Text style={styles.statLabel}>Crafts</Text>
                     <Text style={styles.statNumber}>{formatStat(postsCount)}</Text>
                   </View>
 
@@ -557,6 +557,7 @@ const styles = StyleSheet.create({
   headerRight: {
     flex: 1,
     minWidth: 0,
+    paddingTop: 6,
   },
   avatar: {
     width: responsive(100, 88, 112),
@@ -574,13 +575,13 @@ const styles = StyleSheet.create({
     color: '#4b2e2e',
   },
   userName: {
-    fontFamily: 'Gaegu',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(14, 12, 18),
     color: '#8b7d7b',
-    marginTop: -8,
+    marginTop: 6,
   },
   bio: {
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(15, 14, 18),
     color: '#4b3f3c',
     lineHeight: responsive(22, 20, 26),
@@ -590,6 +591,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
+    marginTop: 2,
   },
   statCell: {
     flex: 1,
@@ -601,7 +603,7 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   statLabel: {
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(12, 11, 14),
     color: '#7a6560',
     marginBottom: 2,
@@ -703,14 +705,14 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   listUserName: {
-    fontFamily: 'Gaegu',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(13, 12, 16),
     color: '#6B7280',
-    marginTop: -4,
+    marginTop: 4,
   },
   listBio: {
     marginTop: 4,
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(13, 12, 15),
     color: '#6B7280',
   },
@@ -742,7 +744,7 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     color: '#6B7280',
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(15, 14, 18),
     paddingVertical: 30,
   },
