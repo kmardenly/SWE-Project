@@ -25,6 +25,7 @@ const DARK = '#5c3d3d';
 
 const MAX_SLIDER_DAYS = 120;
 const MAX_EXTRA_DAYS = 2000;
+const CAT_MOODS = ['happy', 'default', 'sad', 'playful'];
 
 function addDaysToToday(days) {
   const d = new Date();
@@ -69,6 +70,8 @@ const INITIAL_GOALS = [
     ],
     completed: false,
     completedAt: null,
+    archived: false,
+    archivedAt: null,
   },
   {
     id: 'g2',
@@ -80,12 +83,15 @@ const INITIAL_GOALS = [
     ],
     completed: false,
     completedAt: null,
+    archived: false,
+    archivedAt: null,
   },
 ];
 
-function GoalCard({ goal, onDelete, onToggleComplete, onToggleSubGoal }) {
+function GoalCard({ goal, onDelete, onArchive, onToggleComplete, onToggleSubGoal }) {
   const done = Boolean(goal.completed);
   const subGoals = (goal.subGoals ?? []).map(normalizeSubGoal);
+  const canArchive = done && !goal.archived;
   return (
     <View style={[styles.goalCard, done && styles.goalCardDone]}>
       <View style={styles.goalCardHeader}>
@@ -129,6 +135,12 @@ function GoalCard({ goal, onDelete, onToggleComplete, onToggleSubGoal }) {
           ))}
         </View>
       ) : null}
+      {canArchive ? (
+        <Pressable onPress={() => onArchive(goal.id)} style={styles.archiveActionWrap} hitSlop={6}>
+          <Text style={styles.archiveHint}>archive</Text>
+          <Ionicons name="arrow-down" size={14} color="#7e6767" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -140,6 +152,11 @@ export default function GoalsScreen() {
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [goalName, setGoalName] = useState('');
+  const [catMoodIndex, setCatMoodIndex] = useState(0);
+  const [catName, setCatName] = useState('your craft cat');
+  const [isEditingCatName, setIsEditingCatName] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [isEditingArchived, setIsEditingArchived] = useState(false);
   /** Slider 0 = none; 1–119 = days; 120 = 120+ (use extraBeyond120) */
   const [deadlineSlider, setDeadlineSlider] = useState(0);
   const [extraBeyond120, setExtraBeyond120] = useState(0);
@@ -169,6 +186,8 @@ export default function GoalsScreen() {
         subGoals,
         completed: false,
         completedAt: null,
+        archived: false,
+        archivedAt: null,
       },
     ]);
 
@@ -181,6 +200,35 @@ export default function GoalsScreen() {
 
   const handleDeleteGoal = (goalId) => {
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
+  };
+
+  const handleArchiveGoal = (goalId) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        return {
+          ...goal,
+          completed: true,
+          completedAt: goal.completedAt || today,
+          archived: true,
+          archivedAt: today,
+        };
+      })
+    );
+  };
+
+  const handleUnarchiveGoal = (goalId) => {
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        return {
+          ...goal,
+          archived: false,
+          archivedAt: null,
+        };
+      })
+    );
   };
 
   const handleToggleComplete = (goalId) => {
@@ -207,7 +255,13 @@ export default function GoalsScreen() {
         const next = subs.map((s, i) =>
           i === subIndex ? { ...s, completed: !s.completed } : s
         );
-        return { ...goal, subGoals: next };
+        const allDone = next.length > 0 && next.every((sub) => sub.completed);
+        return {
+          ...goal,
+          subGoals: next,
+          completed: allDone,
+          completedAt: allDone ? goal.completedAt || new Date().toISOString().slice(0, 10) : null,
+        };
       })
     );
   };
@@ -236,6 +290,9 @@ export default function GoalsScreen() {
   };
 
   const completedCount = goals.filter((g) => g.completed).length;
+  const activeGoals = goals.filter((g) => !g.archived);
+  const archivedGoals = goals.filter((g) => g.archived);
+  const catMood = CAT_MOODS[catMoodIndex] || 'happy';
   const lastCompletedDate = goals
     .filter((g) => g.completed && g.completedAt)
     .reduce((latest, g) => (!latest || g.completedAt > latest ? g.completedAt : latest), null);
@@ -268,23 +325,51 @@ export default function GoalsScreen() {
           keyboardShouldPersistTaps="handled">
           <View style={styles.profileCard}>
             <View style={styles.catWindowColumn}>
-              <CatWindow mood="happy" />
+              <CatWindow mood={catMood} />
             </View>
             <View style={styles.profileTextBlock}>
-              <Text style={styles.profileText}>name: your craft cat</Text>
+              {isEditingCatName ? (
+                <TextInput
+                  style={styles.catNameInput}
+                  value={catName}
+                  onChangeText={setCatName}
+                  autoFocus
+                  placeholder="your craft cat"
+                  placeholderTextColor="#9c8a8a"
+                  onBlur={() => {
+                    if (!catName.trim()) setCatName('your craft cat');
+                    setIsEditingCatName(false);
+                  }}
+                  onSubmitEditing={() => {
+                    if (!catName.trim()) setCatName('your craft cat');
+                    setIsEditingCatName(false);
+                  }}
+                  returnKeyType="done"
+                />
+              ) : (
+                <Pressable onPress={() => setIsEditingCatName(true)} hitSlop={6}>
+                  <Text style={styles.profileText}>{`name: ${catName}`}</Text>
+                </Pressable>
+              )}
               <Text style={styles.profileText}>level: 1</Text>
               <Text style={styles.profileText}>goals achieved: {completedCount}</Text>
               <Text style={styles.profileText}>
                 last goal completed: {lastCompletedDate ? formatDateDot(lastCompletedDate) : '--'}
               </Text>
+              <Pressable
+                style={styles.changeMoodButton}
+                onPress={() => setCatMoodIndex((prev) => (prev + 1) % CAT_MOODS.length)}>
+                <Ionicons name="swap-horizontal" size={14} color="#7f6969" />
+              </Pressable>
             </View>
           </View>
 
-          {goals.map((goal) => (
+          {activeGoals.map((goal) => (
             <GoalCard
               key={goal.id}
               goal={goal}
               onDelete={handleDeleteGoal}
+              onArchive={handleArchiveGoal}
               onToggleComplete={handleToggleComplete}
               onToggleSubGoal={handleToggleSubGoal}
             />
@@ -393,6 +478,54 @@ export default function GoalsScreen() {
               <Text style={styles.addGoalButtonText}>add goal</Text>
             </Pressable>
           )}
+          {archivedGoals.length ? (
+            <View style={styles.archivedWrap}>
+              <View style={styles.archivedHeaderRow}>
+                <Pressable style={styles.archivedToggle} onPress={() => setShowArchived((prev) => !prev)}>
+                  <Ionicons name={showArchived ? 'chevron-down' : 'chevron-forward'} size={16} color="#6c5555" />
+                  <Text style={styles.archivedToggleText}>
+                    {showArchived ? 'hide archived goals' : `show archived goals (${archivedGoals.length})`}
+                  </Text>
+                </Pressable>
+                {showArchived ? (
+                  <Pressable
+                    style={[styles.archivedEditIconButton, isEditingArchived && styles.archivedEditIconButtonActive]}
+                    onPress={() => setIsEditingArchived((prev) => !prev)}
+                    hitSlop={6}>
+                    <Ionicons name="create-outline" size={16} color={isEditingArchived ? '#4f3a3a' : '#6f5a5a'} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {showArchived
+                ? archivedGoals.map((goal) => (
+                    <View key={goal.id} style={styles.archivedGoalCard}>
+                      <Text style={styles.archivedGoalTitle}>{goal.title}</Text>
+                      <Text style={styles.archivedGoalMeta}>
+                        done {formatDateDot(goal.completedAt)} · archived {formatDateDot(goal.archivedAt)}
+                      </Text>
+                      {isEditingArchived ? (
+                        <View style={styles.archivedGoalActions}>
+                          <Pressable
+                            onPress={() => handleUnarchiveGoal(goal.id)}
+                            style={styles.archivedGoalActionButton}
+                            hitSlop={6}>
+                            <Ionicons name="arrow-up" size={14} color="#6f5a5a" />
+                            <Text style={styles.archivedGoalActionText}>unarchive</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleDeleteGoal(goal.id)}
+                            style={styles.archivedGoalActionButton}
+                            hitSlop={6}>
+                            <Ionicons name="trash-outline" size={14} color="#8f555d" />
+                            <Text style={[styles.archivedGoalActionText, styles.archivedGoalDeleteText]}>delete</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))
+                : null}
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -457,6 +590,44 @@ const styles = StyleSheet.create({
     color: '#786161',
     marginBottom: 2,
   },
+  catNameInput: {
+    width: '100%',
+    borderBottomWidth: 1,
+    borderBottomColor: '#c9aeae',
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(20, 15, 24),
+    color: '#786161',
+    paddingVertical: 0,
+    marginBottom: 2,
+  },
+  changeMoodButton: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    opacity: 0.58,
+    borderRadius: 999,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#d9c4c4',
+    backgroundColor: '#f6eeee',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#9f7f7f',
+    backgroundColor: '#fff8f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#7a9f6a',
+    borderColor: '#5f7a52',
+  },
   goalCard: {
     borderRadius: 10,
     borderWidth: 1,
@@ -479,20 +650,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#9f7f7f',
-    backgroundColor: '#fff8f8',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: '#7a9f6a',
-    borderColor: '#5f7a52',
   },
   goalTitle: {
     flex: 1,
@@ -557,6 +714,20 @@ const styles = StyleSheet.create({
   subGoalDone: {
     textDecorationLine: 'line-through',
     color: '#8a7a7a',
+  },
+  archiveActionWrap: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  archiveHint: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 13, 18),
+    color: '#7e6767',
   },
   addSheet: {
     borderRadius: 12,
@@ -658,5 +829,83 @@ const styles = StyleSheet.create({
     fontFamily: 'Gaegu-Bold',
     fontSize: responsive(32, 22, 36),
     color: DARK,
+  },
+  archivedWrap: {
+    marginTop: 10,
+    gap: 8,
+  },
+  archivedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  archivedToggle: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d8bcbc',
+    backgroundColor: '#f0dcdc',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  archivedEditIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ceb3b3',
+    backgroundColor: '#f4e3e3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  archivedEditIconButtonActive: {
+    backgroundColor: '#edd2d2',
+    borderColor: '#c9a3a3',
+  },
+  archivedToggleText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 24),
+    color: DARK,
+  },
+  archivedGoalCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cfb8b8',
+    backgroundColor: '#ece4e4',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  archivedGoalTitle: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(22, 16, 26),
+    color: '#715b5b',
+  },
+  archivedGoalMeta: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 12, 18),
+    color: '#8a7676',
+  },
+  archivedGoalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
+  },
+  archivedGoalActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  archivedGoalActionText: {
+    fontFamily: 'Gaegu-Bold',
+    fontSize: responsive(16, 12, 18),
+    color: '#6f5a5a',
+  },
+  archivedGoalDeleteText: {
+    color: '#8f555d',
   },
 });

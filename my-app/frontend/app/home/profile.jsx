@@ -279,7 +279,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.statsRow}>
               <View style={styles.statCell}>
-                <Text style={styles.statLabel}>Posts</Text>
+                <Text style={styles.statLabel}>Crafts</Text>
                 <Text style={styles.statNumber}>{formatStat(postsCount)}</Text>
               </View>
               <Pressable style={styles.statCell} onPress={openFollowersModal}>
@@ -433,6 +433,7 @@ const styles = StyleSheet.create({
   headerRight: {
     flex: 1,
     minWidth: 0,
+    paddingTop: 6,
   },
 
   nameContainer: {
@@ -445,25 +446,25 @@ const styles = StyleSheet.create({
     color: '#4b2e2e',
   },
   userName: {
-    fontFamily: 'Gaegu',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(14, 12, 18 ),
     color: '#8b7d7b',
-    marginTop: -8,
+    marginTop: 6,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
+    marginTop: 2,
   },
   statCell: {
     flex: 1,
     alignItems: 'center',
   },
   statLabel: {
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: 12,
     color: '#7a6560',
-    fontWeight: '600',
     marginBottom: 2,
   },
   statNumber: {
@@ -472,7 +473,7 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   bio: {
-    fontFamily: 'Gafata',
+    fontFamily: 'Gaegu-Bold',
     fontSize: responsive(15, 14, 18),
     color: '#4b3f3c',
     lineHeight: responsive(22, 20, 26),

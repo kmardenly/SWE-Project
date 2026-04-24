@@ -18,10 +18,6 @@ export default function FloatingPostButton({ bottom = 0, onPress }) {
         <View style={[styles.hole, styles.holeTopRight]} />
         <View style={[styles.hole, styles.holeBottomLeft]} />
         <View style={[styles.hole, styles.holeBottomRight]} />
-        <View style={styles.plusWrap}>
-          <View style={styles.plusVertical} />
-          <View style={styles.plusHorizontal} />
-        </View>
       </View>
     </Pressable>
   );
@@ -59,26 +55,6 @@ const styles = StyleSheet.create({
     borderColor: '#c4a2a2',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  plusWrap: {
-    width: 14,
-    height: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  plusVertical: {
-    position: 'absolute',
-    width: 2,
-    height: 12,
-    borderRadius: 1,
-    backgroundColor: '#6a4e4e',
-  },
-  plusHorizontal: {
-    position: 'absolute',
-    width: 12,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#6a4e4e',
   },
   hole: {
     position: 'absolute',
