@@ -279,6 +279,10 @@ export default function ProjectsScreen() {
   const [isDraggingElement, setIsDraggingElement] = useState(false);
   const [projects, setProjects] = useState([]);
   const [projectElements, setProjectElements] = useState({});
+  const [inspirationImages, setInspirationImages] = useState([]);
+  const [listItems, setListItems] = useState([]);
+  const [listDraftText, setListDraftText] = useState('');
+  const [listDraftBulleted, setListDraftBulleted] = useState(true);
   const canvasTapGuard = useRef(false);
 
   const openProject = useMemo(() => projects.find((project) => project.id === openProjectId) || null, [projects, openProjectId]);
@@ -340,6 +344,37 @@ export default function ProjectsScreen() {
     if (!result.canceled && result.assets?.length) {
       setDraftProjectCover(result.assets[0].uri);
     }
+  };
+
+  const pickInspirationImageFromLibrary = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.9,
+    });
+
+    if (!result.canceled && result.assets?.length) {
+      const nextAsset = result.assets[0];
+      setInspirationImages((prev) => [{ id: `inspo-${Date.now()}`, uri: nextAsset.uri }, ...prev]);
+    }
+  };
+
+  const addListItem = () => {
+    const trimmed = listDraftText.trim();
+    if (!trimmed) return;
+    setListItems((prev) => [
+      ...prev,
+      {
+        id: `list-item-${Date.now()}`,
+        text: trimmed,
+        checked: false,
+        bulleted: listDraftBulleted,
+      },
+    ]);
+    setListDraftText('');
   };
 
   const saveProject = () => {
@@ -599,22 +634,130 @@ export default function ProjectsScreen() {
     return renderProjectsRoot();
   };
 
-  const renderTabBody = () => {
-    if (activeTab === 'projects') return renderProjectsTab();
-    if (activeTab === 'inspirations') {
-      return (
-        <View style={styles.placeholderCard}>
-          <Text style={styles.placeholderTitle}>Inspirations</Text>
-          <Text style={styles.placeholderBody}>Save visual ideas and mood references here.</Text>
-        </View>
-      );
-    }
+  const renderInspirationsTab = () => {
+    const leftCol = inspirationImages.filter((_, index) => index % 2 === 0);
+    const rightCol = inspirationImages.filter((_, index) => index % 2 === 1);
+
     return (
-      <View style={styles.placeholderCard}>
-        <Text style={styles.placeholderTitle}>Lists</Text>
-        <Text style={styles.placeholderBody}>Track supplies, shopping, and project checklists.</Text>
+      <View style={styles.inspirationsWrap}>
+        <View style={styles.inspirationsHeaderRow}>
+          <Text style={styles.placeholderTitle}>Inspirations</Text>
+          <Pressable style={styles.addInspirationButton} onPress={pickInspirationImageFromLibrary}>
+            <Ionicons name="add" size={18} color="#5f484c" />
+            <Text style={styles.addInspirationButtonText}>Upload image</Text>
+          </Pressable>
+        </View>
+        {inspirationImages.length === 0 ? (
+          <View style={styles.placeholderCard}>
+            <Text style={styles.placeholderBody}>
+              Upload inspiration images and collect visual ideas here.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.inspirationGridRow}>
+            <View style={styles.inspirationColumn}>
+              {leftCol.map((item) => (
+                <View key={item.id} style={styles.inspirationCard}>
+                  <Image source={{ uri: item.uri }} style={styles.inspirationImage} resizeMode="cover" />
+                  <Pressable
+                    style={styles.inspirationDeleteButton}
+                    onPress={() => setInspirationImages((prev) => prev.filter((img) => img.id !== item.id))}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <View style={styles.inspirationColumn}>
+              {rightCol.map((item) => (
+                <View key={item.id} style={styles.inspirationCard}>
+                  <Image source={{ uri: item.uri }} style={styles.inspirationImage} resizeMode="cover" />
+                  <Pressable
+                    style={styles.inspirationDeleteButton}
+                    onPress={() => setInspirationImages((prev) => prev.filter((img) => img.id !== item.id))}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
       </View>
     );
+  };
+
+  const renderListsTab = () => (
+    <View style={styles.listsWrap}>
+      <Text style={styles.placeholderTitle}>Lists</Text>
+      <View style={styles.listComposerWrap}>
+        <Pressable style={styles.listTypeToggle} onPress={() => setListDraftBulleted((prev) => !prev)}>
+          <Ionicons name={listDraftBulleted ? 'list' : 'remove'} size={18} color="#5f4b4b" />
+          <Text style={styles.listTypeToggleText}>{listDraftBulleted ? 'Bullet' : 'Plain'}</Text>
+        </Pressable>
+        <TextInput
+          style={styles.listComposerInput}
+          placeholder="Add an item..."
+          placeholderTextColor="#978080"
+          value={listDraftText}
+          onChangeText={setListDraftText}
+          onSubmitEditing={addListItem}
+          returnKeyType="done"
+        />
+        <Pressable style={styles.listAddButton} onPress={addListItem}>
+          <Ionicons name="add" size={18} color="#523a3e" />
+        </Pressable>
+      </View>
+
+      {listItems.length === 0 ? (
+        <View style={styles.placeholderCard}>
+          <Text style={styles.placeholderBody}>
+            Add bullet and plain items, then tap the check to cross them out.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.listItemsWrap}>
+          {listItems.map((item) => (
+            <View key={item.id} style={styles.listItemRow}>
+              <Pressable
+                style={styles.listCheckButton}
+                onPress={() =>
+                  setListItems((prev) =>
+                    prev.map((entry) => (entry.id === item.id ? { ...entry, checked: !entry.checked } : entry))
+                  )
+                }
+              >
+                <Ionicons name={item.checked ? 'checkbox' : 'square-outline'} size={20} color="#6c5155" />
+              </Pressable>
+              <Text style={styles.listPrefix}>{item.bulleted ? '\u2022' : '-'}</Text>
+              <TextInput
+                style={[styles.listItemInput, item.checked && styles.listItemInputChecked]}
+                value={item.text}
+                onChangeText={(nextText) =>
+                  setListItems((prev) =>
+                    prev.map((entry) => (entry.id === item.id ? { ...entry, text: nextText } : entry))
+                  )
+                }
+                placeholder="List item"
+                placeholderTextColor="#9e8888"
+              />
+              <Pressable
+                style={styles.listDeleteButton}
+                onPress={() => setListItems((prev) => prev.filter((entry) => entry.id !== item.id))}
+              >
+                <Ionicons name="trash-outline" size={17} color="#a6525d" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  const renderTabBody = () => {
+    if (activeTab === 'projects') return renderProjectsTab();
+    if (activeTab === 'inspirations') return renderInspirationsTab();
+    return renderListsTab();
   };
 
   return (
@@ -1251,6 +1394,143 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 22,
     fontFamily: 'Gaegu-Bold',
+  },
+  inspirationsWrap: {
+    gap: 10,
+  },
+  inspirationsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  addInspirationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#d3b9be',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  addInspirationButtonText: {
+    fontFamily: 'Gaegu-Bold',
+    color: '#5f484c',
+    fontSize: 18,
+  },
+  inspirationGridRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  inspirationColumn: {
+    flex: 1,
+    gap: 8,
+  },
+  inspirationCard: {
+    position: 'relative',
+  },
+  inspirationImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+    backgroundColor: '#e9ddd3',
+  },
+  inspirationDeleteButton: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listsWrap: {
+    gap: 10,
+  },
+  listComposerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  listTypeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d2babf',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    gap: 4,
+  },
+  listTypeToggleText: {
+    fontFamily: 'Gaegu-Bold',
+    color: '#6a5357',
+    fontSize: 16,
+  },
+  listComposerInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#d4bcc0',
+    borderRadius: 9,
+    backgroundColor: '#fff',
+    fontFamily: 'Gaegu-Bold',
+    color: '#4c3639',
+    fontSize: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  listAddButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderColor: '#c8a3aa',
+    borderRadius: 8,
+    backgroundColor: '#e8c9ce',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listItemsWrap: {
+    gap: 8,
+  },
+  listItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d4bcc0',
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  listCheckButton: {
+    padding: 2,
+  },
+  listPrefix: {
+    fontFamily: 'Gaegu-Bold',
+    color: '#5e4b4f',
+    fontSize: 22,
+    marginTop: -2,
+  },
+  listItemInput: {
+    flex: 1,
+    fontFamily: 'Gaegu-Bold',
+    color: '#4e3b3f',
+    fontSize: 20,
+    paddingVertical: 0,
+  },
+  listItemInputChecked: {
+    textDecorationLine: 'line-through',
+    color: '#8c777b',
+  },
+  listDeleteButton: {
+    padding: 4,
   },
   modalBackdrop: {
     flex: 1,
