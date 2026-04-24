@@ -32,9 +32,9 @@ export default function RootLayout() {
     const testConnection = async () => {
       const { data, error } = await client.from('users').select('*').limit(1);
       if (error) {
-        console.log('❌ Supabase error:', error.message);
+        console.log('Supabase error:', error.message);
       } else {
-        console.log('✅ Supabase connected! Data:', data);
+        console.log('Supabase connected! Data:', data);
       }
     };
     testConnection();

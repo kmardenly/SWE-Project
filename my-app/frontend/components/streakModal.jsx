@@ -12,7 +12,7 @@ export default function StreakModal({ visible, onClose, streak }) {
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.panel} onPress={() => {}}>
           <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>Craft Streak 🔥</Text>
+            <Text style={styles.panelTitle}>Craft Streak</Text>
             <Pressable onPress={onClose}>
               <Ionicons name="close" size={20} color="#333" />
             </Pressable>
