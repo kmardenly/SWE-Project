@@ -9,6 +9,8 @@ const TABS = ['projects', 'inspirations', 'lists'];
 
 const STAR_STICKER_URI =
   'file:///C:/Users/lilly/.cursor/projects/c-Users-lilly-ClionProjects-DSA-SWE-Project/assets/c__Users_lilly_AppData_Roaming_Cursor_User_workspaceStorage_ef69fe16c5f589082409f582d9787afb_images_star_sticker-1da366ce-3b8a-4e0b-842e-938aefe0c650.png';
+const DEFAULT_PROJECT_COVER = require('@/assets/images/default_project_cover.png');
+const DEFAULT_PROJECT_COVER_URI = Image.resolveAssetSource(DEFAULT_PROJECT_COVER).uri;
 
 function formatLastEdited(lastEditedAt) {
   const diffSeconds = Math.max(1, Math.floor((Date.now() - lastEditedAt) / 1000));
@@ -343,8 +345,7 @@ export default function ProjectsScreen() {
   const saveProject = () => {
     const trimmedName = draftProjectName.trim() || 'Untitled project';
     const now = Date.now();
-    const fallbackCover =
-      'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=700&q=80';
+    const fallbackCover = DEFAULT_PROJECT_COVER_URI;
 
     if (editingProjectId) {
       setProjects((prev) =>
@@ -446,6 +447,9 @@ export default function ProjectsScreen() {
         </View>
       ) : null}
       {projects.map((project) => (
+        (() => {
+          const isDefaultCover = !project.cover || project.cover === DEFAULT_PROJECT_COVER_URI;
+          return (
         <Pressable
           key={project.id}
           style={styles.projectCard}
@@ -453,11 +457,17 @@ export default function ProjectsScreen() {
           onLongPress={() => openProjectEditor(project)}
           delayLongPress={320}
         >
-          <Image source={{ uri: project.cover }} style={styles.projectThumb} />
+          <Image
+            source={{ uri: project.cover }}
+            style={[styles.projectThumb, isDefaultCover && styles.projectThumbNoBorder]}
+            resizeMode="cover"
+          />
           {project.completed ? <Image source={{ uri: STAR_STICKER_URI }} style={styles.completedSticker} /> : null}
           <Text style={styles.projectLabel}>{project.name}</Text>
           <Text style={styles.lastEditedText}>last edited {formatLastEdited(project.lastEditedAt)}</Text>
         </Pressable>
+          );
+        })()
       ))}
     </Pressable>
   );
@@ -870,9 +880,13 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     borderRadius: 10,
-    backgroundColor: '#d8d8d8',
+    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: '#cab7b7',
+  },
+  projectThumbNoBorder: {
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   completedSticker: {
     position: 'absolute',
