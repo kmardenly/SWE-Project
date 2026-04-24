@@ -7,8 +7,11 @@ import * as ImagePicker from 'expo-image-picker';
 
 const TABS = ['projects', 'inspirations', 'lists'];
 
-const STAR_STICKER_URI =
-  'file:///C:/Users/lilly/.cursor/projects/c-Users-lilly-ClionProjects-DSA-SWE-Project/assets/c__Users_lilly_AppData_Roaming_Cursor_User_workspaceStorage_ef69fe16c5f589082409f582d9787afb_images_star_sticker-1da366ce-3b8a-4e0b-842e-938aefe0c650.png';
+const STAR_STICKER = require('@/assets/images/star_sticker.png');
+const STAR_STICKER_URI = Image.resolveAssetSource(STAR_STICKER).uri;
+const EXAMPLE_BUNNY = require('@/assets/images/example_bunny.png');
+const EXAMPLE_BUNNY_URI = Image.resolveAssetSource(EXAMPLE_BUNNY).uri;
+const EXAMPLE_PROJECT_ID = 'project-bunny-crochet';
 const DEFAULT_PROJECT_COVER = require('@/assets/images/default_project_cover.png');
 const DEFAULT_PROJECT_COVER_URI = Image.resolveAssetSource(DEFAULT_PROJECT_COVER).uri;
 
@@ -257,7 +260,7 @@ function DraggableElement({
 export default function ProjectsScreen() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('projects');
-  const [openProjectId, setOpenProjectId] = useState(null);
+  const [openProjectId, setOpenProjectId] = useState(EXAMPLE_PROJECT_ID);
   const [openFolderId, setOpenFolderId] = useState(null);
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [composerVisible, setComposerVisible] = useState(false);
@@ -277,10 +280,47 @@ export default function ProjectsScreen() {
   const [draftProjectCover, setDraftProjectCover] = useState('');
   const [draftProjectCompleted, setDraftProjectCompleted] = useState(false);
   const [isDraggingElement, setIsDraggingElement] = useState(false);
-  const [projects, setProjects] = useState([]);
-  const [projectElements, setProjectElements] = useState({});
-  const [inspirationImages, setInspirationImages] = useState([]);
-  const [listItems, setListItems] = useState([]);
+  const [projects, setProjects] = useState(() => [
+    {
+      id: EXAMPLE_PROJECT_ID,
+      name: 'bunny crochet',
+      completed: true,
+      lastEditedAt: Date.now(),
+      cover: EXAMPLE_BUNNY_URI,
+      folders: [],
+    },
+  ]);
+  const [projectElements, setProjectElements] = useState(() => ({
+    [EXAMPLE_PROJECT_ID]: [
+      {
+        id: 'photo-example-bunny',
+        type: 'photo',
+        content: EXAMPLE_BUNNY_URI,
+        x: 24,
+        y: 92,
+        width: 165,
+        height: 120,
+      },
+      {
+        id: 'text-example-bunny-note',
+        type: 'text',
+        content: '3/27 made this project as birthday present!',
+        x: 24,
+        y: 230,
+        width: 250,
+        height: 56,
+      },
+    ],
+  }));
+  const [inspirationImages, setInspirationImages] = useState(() => [{ id: 'inspo-example-bunny', uri: EXAMPLE_BUNNY_URI }]);
+  const [listItems, setListItems] = useState(() => [
+    {
+      id: 'list-item-example-yarn',
+      text: '3 balls of white yarn',
+      checked: false,
+      bulleted: true,
+    },
+  ]);
   const [listDraftText, setListDraftText] = useState('');
   const [listDraftBulleted, setListDraftBulleted] = useState(true);
   const canvasTapGuard = useRef(false);
